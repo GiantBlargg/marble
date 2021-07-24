@@ -7,9 +7,6 @@
 
 class OrbitCam : public Entity {
   private:
-	Render::Render& render;
-	Window& window;
-
 	const float speed = -1.0f / 200.0f;
 	float xAngle, yAngle;
 	const float pi = glm::pi<float>();
@@ -18,10 +15,11 @@ class OrbitCam : public Entity {
 	const float scroll_speed = -1.0f / 2.0f;
 
   public:
-	OrbitCam(Render::Render& render, Window& window) : render(render), window(window){};
-	void enter() override { render.camera_set_fov(50); }
+	OrbitCam(){};
+	void enter() override { Engine::get_instance()->render.camera_set_fov(50); }
 
-	void update(float) override {
+	void update(double) override {
+		Window& window = Engine::get_instance()->window;
 		if (window.mouseButton(GLFW_MOUSE_BUTTON_LEFT)) {
 			window.setCursorMode(Window::CursorMode::Disabled);
 			xAngle += window.cursor.deltax * speed;
@@ -38,6 +36,6 @@ class OrbitCam : public Entity {
 		glm::mat4 cameraPos = glm::rotate(glm::mat4(1.0f), xAngle, {0, 1, 0}) *
 			glm::rotate(glm::mat4(1.0f), yAngle, {1, 0, 0}) * glm::translate(glm::mat4(1.0f), glm::vec3({0, 0, dist}));
 
-		render.camera_set_pos(cameraPos);
+		Engine::get_instance()->render.camera_set_pos(cameraPos);
 	}
 };

@@ -1,5 +1,6 @@
 #include "import.hpp"
 
+#include "engine.hpp"
 #include <assimp/Importer.hpp>
 #include <assimp/pbrmaterial.h>
 #include <assimp/postprocess.h>
@@ -66,7 +67,9 @@ loadTexture(aiMaterial* material, aiTextureType type, unsigned int index, const 
 	return tex;
 }
 
-Model importModel(std::string filename, Render& render) {
+Model importModel(std::string filename) {
+	Render& render = Engine::get_instance()->render;
+
 	Assimp::Importer importer;
 	const aiScene* scene =
 		importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_OptimizeMeshes | aiProcess_FlipUVs);
@@ -131,7 +134,7 @@ Model importModel(std::string filename, Render& render) {
 	return model;
 }
 
-TextureHandle importSkybox(std::string filename, Render&) {
+TextureHandle importSkybox(std::string filename) {
 	int width, height;
 	float* data = stbi_loadf(filename.c_str(), &width, &height, nullptr, 3);
 

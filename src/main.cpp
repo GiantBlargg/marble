@@ -1,7 +1,6 @@
-#include "entities/entity_manager.hpp"
+#include "engine.hpp"
 #include "entities/model_view.hpp"
 #include "entities/orbit_cam.hpp"
-#include "window.hpp"
 #include <chrono>
 #include <iostream>
 
@@ -10,41 +9,14 @@ int main(int argc, char* argv[]) {
 	std::vector<std::string> args;
 	args.assign(argv, argv + argc);
 
-	Window window;
-
-	Render::Render& render = window.getRender();
-
-	// Create entitity manager
-	EntityManager e_manager;
-
-	// Set up variables for fixed and variable timestep
-	float timestep = 1.f / 60.f;
-	float time = 0;
-	auto past = std::chrono::high_resolution_clock::now();
+	Engine::init();
 
 	if (args.size() > 1) {
-		e_manager.addEntity(std::make_unique<ModelView>(render, args.at(1)));
+		Engine::get_instance()->e_manager.addEntity(std::make_unique<ModelView>(args.at(1)));
 	} else {
-		e_manager.addEntity(std::make_unique<ModelView>(render));
+		Engine::get_instance()->e_manager.addEntity(std::make_unique<ModelView>());
 	}
-	e_manager.addEntity(std::make_unique<OrbitCam>(render, window));
+	Engine::get_instance()->e_manager.addEntity(std::make_unique<OrbitCam>());
 
-	// Loop will continue until "X" on window is clicked.
-	// We may want more complex closing behaviour
-	while (!window.shouldClose()) {
-		window.beginFrame();
-
-		// 1 for variable, 0 for fixed
-		if (0) {
-			auto now = std::chrono::high_resolution_clock::now();
-			timestep = std::chrono::duration_cast<std::chrono::duration<float>>(now - past).count();
-			past = now;
-		}
-		time += timestep;
-
-		e_manager.update(timestep);
-
-		window.endFrame();
-	}
-	return 0;
+	Engine::get_instance()->run();
 }

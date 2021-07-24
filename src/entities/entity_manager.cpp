@@ -25,7 +25,7 @@ void EntityManager::processChangedEntities() {
 	entities_to_remove.clear();
 }
 
-void EntityManager::update(float dTime) {
+void EntityManager::update(double dTime) {
 	processChangedEntities();
 	for (int i = 0; i < entities.size(); i++) {
 		entities[i]->update(dTime);

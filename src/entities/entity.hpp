@@ -5,5 +5,5 @@ class Entity {
 	virtual ~Entity(){};
 
 	virtual void enter() = 0;
-	virtual void update(float dTime) = 0;
+	virtual void update(double dTime) = 0;
 };

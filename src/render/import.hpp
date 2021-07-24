@@ -6,8 +6,8 @@
 
 namespace Render {
 
-Model importModel(std::string filename, Render&);
+Model importModel(std::string filename);
 
-TextureHandle importSkybox(std::string filename, Render&);
+TextureHandle importSkybox(std::string filename);
 
 } // namespace Render

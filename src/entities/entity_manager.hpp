@@ -18,7 +18,7 @@ class EntityManager {
 
 	void addEntity(std::unique_ptr<Entity> e);
 
-	void update(float dTime);
+	void update(double dTime);
 
 	void removeEntity(Entity* e);
 };

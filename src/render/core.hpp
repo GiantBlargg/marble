@@ -4,6 +4,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/trigonometric.hpp>
+#include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -24,13 +26,42 @@ struct MeshDef {
 	std::vector<uint32_t> indicies;
 };
 
-#define REGISTER(T, collection)                                                                                        \
-	std::vector<T> collection;                                                                                         \
-	T##Handle register##T(T item) {                                                                                    \
-		uint handle = collection.size();                                                                               \
-		collection.push_back(item);                                                                                    \
-		return handle;                                                                                                 \
+template <class T> class Container {
+  public:
+	typedef uint Handle;
+
+  private:
+	std::unordered_map<Handle, T> map;
+	Handle next_handle = 0;
+
+  public:
+	Handle emplace() {
+		Handle handle;
+		do
+			handle = next_handle++;
+		while (map.contains(handle));
+		map[handle];
+		return handle;
 	}
+	template <typename... Args> Handle emplace(Args&&... args) {
+		Handle handle;
+		do
+			handle = next_handle++;
+		while (map.contains(handle));
+		map.emplace(handle, std::forward<Args>(args)...);
+		return handle;
+	}
+	void erase(Handle handle) { map.erase(handle); }
+	T& at(const Handle& handle) { return map.at(handle); }
+	typename std::unordered_map<Handle, T>::iterator begin() { return map.begin(); }
+	typename std::unordered_map<Handle, T>::iterator end() { return map.end(); }
+	void vector_push(std::vector<T>& v) {
+		v.reserve(v.size() + map.size());
+		for (auto& i : map) {
+			v.push_back(i.second);
+		}
+	}
+};
 
 typedef uint MeshHandle;
 typedef uint InstanceHandle;
@@ -60,30 +91,14 @@ class Core {
 		uint mat;
 		mat4 trans;
 	};
-	// REGISTER(Instance, instances)
-	std::vector<Instance> instances;
-	std::vector<uint> recycled_instances;
+	Container<Instance> instances;
 
 	struct Mesh {
 		GLuint vao;
 		uint count;
 		std::vector<GLuint> buffers;
 	};
-	// REGISTER(Mesh, meshes)
-	std::vector<Mesh> meshes;
-	std::vector<uint> recycled_meshes;
-	MeshHandle register_mesh(Mesh item) {
-		MeshHandle handle;
-		if (recycled_meshes.empty()) {
-			handle = meshes.size();
-			meshes.push_back(item);
-		} else {
-			handle = recycled_meshes.back();
-			recycled_meshes.pop_back();
-			meshes[handle] = item;
-		}
-		return handle;
-	}
+	Container<Mesh> meshes;
 
 	struct ShaderConfig {
 		uint shader;
@@ -94,11 +109,11 @@ class Core {
 		std::vector<ShaderConfig> shaders;
 		std::unordered_set<InstanceHandle> instances = {};
 	};
-	REGISTER(Material, materials);
+	Container<Material> materials;
 	MaterialHandle register_material(Material mat) {
-		auto handle = registerMaterial(mat);
+		auto handle = materials.emplace(mat);
 		for (auto& shaderconf : mat.shaders) {
-			shaders[shaderconf.shader].materials.emplace(handle);
+			shaders.at(shaderconf.shader).materials.emplace(handle);
 		}
 		return handle;
 	}
@@ -112,7 +127,7 @@ class Core {
 		Type type;
 		std::unordered_set<MaterialHandle> materials = {};
 	};
-	REGISTER(Shader, shaders)
+	Container<Shader> shaders;
 
 	const int lightmapSize = 4096;
 	const float lightmapCoverage = 300;
@@ -124,10 +139,13 @@ class Core {
 		float _pad1;
 		mat4 shadowMapTrans;
 	};
-	REGISTER(DirLight, dirLights)
+	Container<DirLight> dirLights;
 	GLuint dirLightBuffer, dirLightShadow;
 
-	enum class RenderOrder { Simple, Shader, UIDepth };
+	enum class RenderOrder {
+		Simple,
+		Shader,
+	};
 	void renderScene(Shader::Type type, RenderOrder order = RenderOrder::Shader);
 
   public:
@@ -142,49 +160,37 @@ class Core {
 	MeshHandle create_mesh(MeshDef);
 	void delete_mesh(MeshHandle handle);
 	InstanceHandle create_instance(MeshHandle mesh, MaterialHandle mat, mat4 trans = mat4(1.0f)) {
-		InstanceHandle instance;
-		if (recycled_instances.empty()) {
-			instance = instances.size();
-			instances.push_back(Instance{});
-		} else {
-			instance = recycled_instances.back();
-			recycled_instances.pop_back();
-		}
+		InstanceHandle instance = instances.emplace();
 		instance_set_mesh(instance, mesh);
 		instance_set_material(instance, mat);
 		instance_set_trans(instance, trans);
 		return instance;
 	}
-	void instance_set_mesh(InstanceHandle instance, MeshHandle mesh) { instances[instance].model = mesh; }
+	void instance_set_mesh(InstanceHandle instance, MeshHandle mesh) { instances.at(instance).model = mesh; }
 	void instance_set_material(InstanceHandle instance, MaterialHandle mat) {
-		if (instances[instance].mat != -1)
-			materials[instances[instance].mat].instances.erase(instance);
-		instances[instance].mat = mat;
-		if (mat != -1)
-			materials[mat].instances.emplace(instance);
+		materials.at(instances.at(instance).mat).instances.erase(instance);
+		instances.at(instance).mat = mat;
+		materials.at(mat).instances.emplace(instance);
 	}
-	void instance_set_trans(InstanceHandle instance, mat4 trans) { instances[instance].trans = trans; }
-	void delete_instance(InstanceHandle instance) {
-		instance_set_material(instance, -1);
-		recycled_instances.push_back(instance);
-	}
+	void instance_set_trans(InstanceHandle instance, mat4 trans) { instances.at(instance).trans = trans; }
+	void delete_instance(InstanceHandle instance) { instances.erase(instance); }
 
 	void camera_set_pos(mat4 pos) { cameraPos = glm::inverse(pos); }
 	void camera_set_fov(float degrees) { fov = radians(degrees); }
 
 	DirLightHandle create_dir_light(vec3 colour, vec3 dir) {
-		uint handle = registerDirLight(DirLight{});
+		uint handle = dirLights.emplace();
 		dir_light_set_colour(handle, colour);
 		dir_light_set_dir(handle, dir);
 		return handle;
 	}
-	void dir_light_set_colour(DirLightHandle handle, vec3 colour) { dirLights[handle].colour = colour; }
+	void dir_light_set_colour(DirLightHandle handle, vec3 colour) { dirLights.at(handle).colour = colour; }
 	void dir_light_set_dir(DirLightHandle handle, vec3 dir) {
-		dirLights[handle].dir = normalize(dir);
-		dirLights[handle].shadowMapTrans = ortho(
-											   -lightmapCoverage, lightmapCoverage, -lightmapCoverage, lightmapCoverage,
-											   -lightmapCoverage, lightmapCoverage) *
-			lookAt(vec3{0, 0, 0}, -dirLights[handle].dir, vec3{0, 1, 0});
+		dirLights.at(handle).dir = normalize(dir);
+		dirLights.at(handle).shadowMapTrans = ortho(
+												  -lightmapCoverage, lightmapCoverage, -lightmapCoverage,
+												  lightmapCoverage, -lightmapCoverage, lightmapCoverage) *
+			lookAt(vec3{0, 0, 0}, -dirLights.at(handle).dir, vec3{0, 1, 0});
 	}
 
 	enum TextureFlags { NONE = 0, SRGB = 1 << 0, MIPMAPPED = 1 << 1, ANIOSTROPIC = 1 << 2, CLAMPED = 1 << 3 };

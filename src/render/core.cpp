@@ -47,17 +47,16 @@ uint Core::create_mesh(MeshDef def) {
 
 	glVertexArrayElementBuffer(vao, index_buffer);
 
-	return register_mesh(
+	return meshes.emplace(
 		Mesh{.vao = vao, .count = static_cast<uint>(def.indicies.size()), .buffers = {vertex_buffer, index_buffer}});
 }
 
 void Core::delete_mesh(MeshHandle handle) {
-	glDeleteVertexArrays(1, &(meshes[handle].vao));
+	glDeleteVertexArrays(1, &(meshes.at(handle).vao));
 
-	glDeleteBuffers(meshes[handle].buffers.size(), meshes[handle].buffers.data());
+	glDeleteBuffers(meshes.at(handle).buffers.size(), meshes.at(handle).buffers.data());
 
-	meshes[handle].count = -1;
-	recycled_meshes.push_back(handle);
+	meshes.erase(handle);
 }
 
 uint Core::create_texture(int width, int height, int channels, TextureFlags flags, void* data) {
@@ -102,17 +101,17 @@ uint Core::create_texture(int width, int height, int channels, TextureFlags flag
 
 void Core::renderScene(Shader::Type type, RenderOrder order) {
 	if (order == RenderOrder::Shader) {
-		for (int i = 0; i < shaders.size(); i++) {
-			auto& shader = shaders[i];
+		for (auto& i : shaders) {
+			Shader& shader = i.second;
 			if ((shader.type & type) == 0)
 				continue;
 
 			glUseProgram(shader.shader);
 			for (auto mat : shader.materials) {
-				auto& material = materials[mat];
+				auto& material = materials.at(mat);
 
 				for (auto shaderConfig : material.shaders) {
-					if (shaderConfig.shader != i)
+					if (shaderConfig.shader != i.first)
 						continue;
 					glBindBufferBase(GL_UNIFORM_BUFFER, 1, shaderConfig.uniform);
 					glBindTextures(3, shaderConfig.textures.size(), shaderConfig.textures.data());
@@ -120,43 +119,32 @@ void Core::renderScene(Shader::Type type, RenderOrder order) {
 				}
 
 				for (auto i : material.instances) {
-					auto& instance = instances[i];
-					if (meshes[instance.model].count == -1)
-						continue;
-					glBindVertexArray(meshes[instance.model].vao);
+					auto& instance = instances.at(i);
+					glBindVertexArray(meshes.at(instance.model).vao);
 
 					glUniformMatrix4fv(0, 1, false, value_ptr(instance.trans));
 
-					glDrawElements(GL_TRIANGLES, meshes[instance.model].count, GL_UNSIGNED_INT, 0);
+					glDrawElements(GL_TRIANGLES, meshes.at(instance.model).count, GL_UNSIGNED_INT, 0);
 				}
 			}
 		}
 	} else {
-		auto sorted_instances = instances;
-		if (order == RenderOrder::UIDepth) {
-			std::sort(sorted_instances.begin(), sorted_instances.end(), [](Instance a, Instance b) {
-				return a.trans[3][2] < b.trans[3][2];
-			});
-		}
-		for (auto& i : sorted_instances) {
-			if (i.mat == -1)
-				continue;
-			if (meshes[i.model].vao == -1)
-				continue;
+		for (auto& inst : instances) {
+			auto& i = inst.second;
 
-			glBindVertexArray(meshes[i.model].vao);
-			for (auto& shader : materials[i.mat].shaders) {
-				if ((shaders[shader.shader].type & type) == 0)
+			glBindVertexArray(meshes.at(i.model).vao);
+			for (auto& shader : materials.at(i.mat).shaders) {
+				if ((shaders.at(shader.shader).type & type) == 0)
 					continue;
 
-				glUseProgram(shaders[shader.shader].shader);
+				glUseProgram(shaders.at(shader.shader).shader);
 
 				glBindBufferBase(GL_UNIFORM_BUFFER, 1, shader.uniform);
 				glBindTextures(3, shader.textures.size(), shader.textures.data());
 
 				glUniformMatrix4fv(0, 1, false, value_ptr(i.trans));
 
-				glDrawElements(GL_TRIANGLES, meshes[i.model].count, GL_UNSIGNED_INT, 0);
+				glDrawElements(GL_TRIANGLES, meshes.at(i.model).count, GL_UNSIGNED_INT, 0);
 			}
 		}
 	}
@@ -170,6 +158,9 @@ void Core::run() {
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 	glDisable(GL_BLEND);
 	glDepthFunc(GL_LEQUAL);
+
+	std::vector<DirLight> dirLights;
+	this->dirLights.vector_push(dirLights);
 
 	glNamedBufferData(dirLightBuffer, vector_size(dirLights), dirLights.data(), GL_DYNAMIC_DRAW);
 
@@ -203,11 +194,6 @@ void Core::run() {
 	glBindTextures(0, 1, &dirLightShadow);
 	glCullFace(GL_BACK);
 	renderScene(Shader::Type::Opaque | Shader::Type::Skybox);
-
-	glDepthFunc(GL_ALWAYS);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	renderScene(Shader::Type::UI, RenderOrder::UIDepth);
 }
 
 } // namespace Render

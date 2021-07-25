@@ -44,10 +44,10 @@ struct PBR {
 	float reflectionLevels;
 };
 MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
-	static ShaderHandle shader = registerShader(Shader{
+	static ShaderHandle shader = shaders.emplace(Shader{
 		load_shader_program({{"shaders/default.vert", GL_VERTEX_SHADER}, {"shaders/pbr.frag", GL_FRAGMENT_SHADER}}),
 		Shader::Type::Opaque});
-	static ShaderHandle depthShader = registerShader(Shader{
+	static ShaderHandle depthShader = shaders.emplace(Shader{
 		load_shader_program({{"shaders/default.vert", GL_VERTEX_SHADER}, {"shaders/depth.frag", GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth | Shader::Type::Shadow});
 
@@ -79,7 +79,7 @@ MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
 }
 
 MaterialHandle Render::create_ui_material(TextureHandle texture) {
-	static ShaderHandle shader = registerShader(Shader{
+	static ShaderHandle shader = shaders.emplace(Shader{
 		load_shader_program({{"shaders/quad.vert", GL_VERTEX_SHADER}, {"shaders/simple.frag", GL_FRAGMENT_SHADER}}),
 		Shader::Type::UI});
 
@@ -112,7 +112,7 @@ MeshHandle Render::ui_mesh() {
 
 		glVertexArrayElementBuffer(quadVertexArray, index_buffer);
 
-		handle = register_mesh(Mesh{.vao = quadVertexArray, .count = 6, .buffers = {vertex_buffer, index_buffer}});
+		handle = meshes.emplace(Mesh{.vao = quadVertexArray, .count = 6, .buffers = {vertex_buffer, index_buffer}});
 	}
 
 	return handle;
@@ -120,7 +120,7 @@ MeshHandle Render::ui_mesh() {
 
 Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 	{
-		ShaderHandle skyboxShader = registerShader(Shader{
+		ShaderHandle skyboxShader = shaders.emplace(Shader{
 			load_shader_program(
 				{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/testSkybox.frag", GL_FRAGMENT_SHADER}}),
 			Shader::Type::Skybox});
@@ -156,7 +156,7 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 
 		glVertexArrayElementBuffer(vao, index_buffer);
 
-		uint skyboxMesh = register_mesh(
+		uint skyboxMesh = meshes.emplace(
 			Mesh{.vao = vao, .count = static_cast<uint>(indicies.size()), .buffers = {vertex_buffer, index_buffer}});
 		skybox = create_instance(skyboxMesh, skyboxMaterial);
 	}
@@ -189,7 +189,7 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 		mat4 transform(1.0f);
 		glUniformMatrix4fv(0, 1, false, value_ptr(transform));
 
-		auto& quadMesh = meshes[ui_mesh()];
+		auto& quadMesh = meshes.at(ui_mesh());
 		glBindVertexArray(quadMesh.vao);
 		glDrawElements(GL_TRIANGLES, quadMesh.count, GL_UNSIGNED_INT, 0);
 
@@ -240,7 +240,7 @@ void Render::update_skybox() {
 	glCreateFramebuffers(1, &framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-	glBindVertexArray(meshes[skybox].vao);
+	glBindVertexArray(meshes.at(skybox).vao);
 
 	static GLuint irradianceShader = load_shader_program(
 		{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/irradiance.frag", GL_FRAGMENT_SHADER}});
@@ -258,7 +258,7 @@ void Render::update_skybox() {
 
 		glViewport(0, 0, irradianceSize, irradianceSize);
 		glClear(GL_COLOR_BUFFER_BIT);
-		glDrawElements(GL_TRIANGLES, meshes[skybox].count, GL_UNSIGNED_INT, 0);
+		glDrawElements(GL_TRIANGLES, meshes.at(skybox).count, GL_UNSIGNED_INT, 0);
 	}
 
 	static GLuint reflectionShader = load_shader_program(
@@ -281,7 +281,7 @@ void Render::update_skybox() {
 			glNamedBufferSubData(cameraBuffer, 0, sizeof(Camera), &cam);
 
 			glClear(GL_COLOR_BUFFER_BIT);
-			glDrawElements(GL_TRIANGLES, meshes[skybox].count, GL_UNSIGNED_INT, 0);
+			glDrawElements(GL_TRIANGLES, meshes.at(skybox).count, GL_UNSIGNED_INT, 0);
 		}
 	}
 
@@ -292,32 +292,32 @@ void Render::update_skybox() {
 }
 
 void Render::set_skybox_rect_texture(TextureHandle texture, bool update) {
-	static ShaderHandle skyboxShader = registerShader(Shader{
+	static ShaderHandle skyboxShader = shaders.emplace(Shader{
 		load_shader_program(
 			{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/rectSkybox.frag", GL_FRAGMENT_SHADER}}),
 		Shader::Type::Skybox});
-	static ShaderHandle skyboxDepthShader = registerShader(Shader{
+	static ShaderHandle skyboxDepthShader = shaders.emplace(Shader{
 		load_shader_program({{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/depth.frag", GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth});
 	static MaterialHandle skyboxMaterial = register_material(Material{
 		{{.shader = skyboxShader, .uniform = 0, .textures = {texture}},
 		 {.shader = skyboxDepthShader, .uniform = 0, .textures = {}}}});
-	materials[skyboxMaterial].shaders[0].textures[0] = texture;
+	materials.at(skyboxMaterial).shaders[0].textures[0] = texture;
 	set_skybox_material(skyboxMaterial, update);
 }
 
 void Render::set_skybox_cube_texture(TextureHandle texture, bool update) {
-	static ShaderHandle skyboxShader = registerShader(Shader{
+	static ShaderHandle skyboxShader = shaders.emplace(Shader{
 		load_shader_program(
 			{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/cubeSkybox.frag", GL_FRAGMENT_SHADER}}),
 		Shader::Type::Skybox});
-	static ShaderHandle skyboxDepthShader = registerShader(Shader{
+	static ShaderHandle skyboxDepthShader = shaders.emplace(Shader{
 		load_shader_program({{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/depth.frag", GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth});
 	static MaterialHandle skyboxMaterial = register_material(Material{
 		{{.shader = skyboxShader, .uniform = 0, .textures = {texture}},
 		 {.shader = skyboxDepthShader, .uniform = 0, .textures = {}}}});
-	materials[skyboxMaterial].shaders[0].textures[0] = texture;
+	materials.at(skyboxMaterial).shaders[0].textures[0] = texture;
 	set_skybox_material(skyboxMaterial, update);
 }
 

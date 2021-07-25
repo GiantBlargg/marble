@@ -8,7 +8,7 @@
 class OrbitCam : public Entity {
   private:
 	const float speed = -1.0f / 200.0f;
-	float xAngle, yAngle;
+	float xAngle = 0, yAngle = 0;
 	const float pi = glm::pi<float>();
 
 	float dist = 3;

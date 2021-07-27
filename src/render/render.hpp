@@ -36,9 +36,6 @@ class Render : public Core {
 
 	MaterialHandle create_pbr_material(MaterialPBR);
 
-	MeshHandle make_quad_mesh();
-	MeshHandle quad_mesh;
-
 	void set_skybox_material(MaterialHandle material, bool update = true) {
 		instance_set_material(skybox, material);
 		if (update)

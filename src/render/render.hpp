@@ -35,9 +35,9 @@ class Render : public Core {
 	Render(const Render&) = delete;
 
 	MaterialHandle create_pbr_material(MaterialPBR);
-	MaterialHandle create_ui_material(TextureHandle);
 
-	MeshHandle ui_mesh();
+	MeshHandle make_quad_mesh();
+	MeshHandle quad_mesh;
 
 	void set_skybox_material(MaterialHandle material, bool update = true) {
 		instance_set_material(skybox, material);

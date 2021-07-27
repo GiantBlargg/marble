@@ -26,6 +26,65 @@ struct MeshDef {
 	std::vector<uint32_t> indicies;
 };
 
+#define RESOURCE_CONTAINER(T, name, Self)                                                                              \
+  private:                                                                                                             \
+	std::vector<T> name##_dense;                                                                                       \
+	std::vector<std::pair<size_t, size_t>> name##_lookup;                                                              \
+	std::vector<size_t> name##_reverse;                                                                                \
+	std::vector<size_t> name##_recycled;                                                                               \
+	void name##_setup(size_t handle);                                                                                  \
+	void name##_cleanup(size_t handle);                                                                                \
+	size_t name##_insert_unsafe(const T& item) {                                                                       \
+		size_t handle = 0;                                                                                             \
+		if (name##_recycled.empty()) {                                                                                 \
+			handle = name##_lookup.size();                                                                             \
+			name##_lookup.emplace_back();                                                                              \
+		} else {                                                                                                       \
+			handle = name##_recycled.back();                                                                           \
+			name##_recycled.pop_back();                                                                                \
+		}                                                                                                              \
+		name##_dense.push_back(item);                                                                                  \
+		name##_reverse.push_back(handle);                                                                              \
+		name##_lookup[handle].first = name##_dense.size() - 1;                                                         \
+		name##_lookup[handle].second = 0;                                                                              \
+		name##_setup(handle);                                                                                          \
+		return handle;                                                                                                 \
+	}                                                                                                                  \
+	void name##_ref(size_t handle) { name##_lookup.at(handle).second++; }                                              \
+	void name##_unref(size_t handle) {                                                                                 \
+		name##_lookup.at(handle).second--;                                                                             \
+		if (name##_lookup.at(handle).second == 0) {                                                                    \
+			name##_cleanup(handle);                                                                                    \
+			name##_recycled.push_back(handle);                                                                         \
+			size_t i = name##_lookup.at(handle).first;                                                                 \
+			name##_dense[i] = name##_dense.back();                                                                     \
+			name##_dense.pop_back();                                                                                   \
+			name##_reverse[i] = name##_reverse.back();                                                                 \
+			name##_reverse.pop_back();                                                                                 \
+			name##_lookup[name##_reverse[i]].first = i;                                                                \
+		}                                                                                                              \
+	}                                                                                                                  \
+                                                                                                                       \
+  protected:                                                                                                           \
+	T& name##_get(size_t handle) { return name##_dense.at(name##_lookup.at(handle).first); }                           \
+                                                                                                                       \
+  public:                                                                                                              \
+	class T##Handle {                                                                                                  \
+	  private:                                                                                                         \
+		friend class Self;                                                                                             \
+		size_t handle;                                                                                                 \
+		Self& render;                                                                                                  \
+		T##Handle(size_t handle, Self& render) : handle(handle), render(render) { render.name##_ref(handle); }         \
+                                                                                                                       \
+	  public:                                                                                                          \
+		T##Handle(const T##Handle& src) : T##Handle(src.handle, src.render) {}                                         \
+		~T##Handle() { render.name##_unref(handle); }                                                                  \
+	};                                                                                                                 \
+                                                                                                                       \
+  protected:                                                                                                           \
+	T##Handle name##_insert(const T& item) { return T##Handle(name##_insert_unsafe(item), *this); }                    \
+	T& name##_get(T##Handle handle) { return name##_dense.at(name##_lookup.at(handle.handle).first); }
+
 template <class T> class Container {
   public:
 	typedef uint Handle;
@@ -63,14 +122,69 @@ template <class T> class Container {
 	}
 };
 
-typedef uint MeshHandle;
 typedef uint InstanceHandle;
-typedef uint MaterialHandle;
 typedef uint DirLightHandle;
 typedef uint TextureHandle;
-typedef uint ShaderHandle;
 
 class Core {
+
+	// Begin Resources
+
+  protected:
+	struct Mesh {
+		GLuint vao;
+		uint count;
+		std::vector<GLuint> buffers;
+	};
+	RESOURCE_CONTAINER(Mesh, meshes, Core)
+
+  public:
+	MeshHandle create_mesh(MeshDef);
+
+  protected:
+	struct Shader {
+		GLuint shader;
+		enum Type { Opaque = 1 << 0, Depth = 1 << 1, Shadow = 1 << 2, Skybox = 1 << 4 };
+		friend inline Type operator|(const Type lhs, const Type rhs) {
+			return static_cast<Type>(static_cast<int>(lhs) | static_cast<int>(rhs));
+		}
+		Type type;
+		std::unordered_set<size_t> materials = {};
+	};
+	RESOURCE_CONTAINER(Shader, shaders, Core)
+  private:
+	struct _Material {
+		struct ShaderConfig {
+			size_t shader;
+			GLuint uniform;
+			std::vector<TextureHandle> textures;
+		};
+		std::vector<ShaderConfig> shaders;
+		std::unordered_set<InstanceHandle> instances = {};
+	};
+	RESOURCE_CONTAINER(_Material, materials, Core)
+  public:
+	typedef _MaterialHandle MaterialHandle;
+
+  protected:
+	struct ShaderConfig {
+		ShaderHandle shader;
+		GLuint uniform;
+		std::vector<TextureHandle> textures;
+	};
+	typedef std::vector<ShaderConfig> Material;
+	MaterialHandle materials_insert(const Material& mat) {
+		_Material _mat;
+		_mat.shaders.reserve(mat.size());
+		for (auto& shader_conf : mat) {
+			_mat.shaders.push_back(_Material::ShaderConfig{
+				.shader = shader_conf.shader.handle, .uniform = shader_conf.uniform, .textures = shader_conf.textures});
+		}
+		return materials_insert(_mat);
+	}
+
+	// End Resources
+
   protected:
 	template <class T> static size_t vector_size(const std::vector<T>& vec) { return sizeof(T) * vec.size(); }
 
@@ -92,42 +206,6 @@ class Core {
 		mat4 trans;
 	};
 	Container<Instance> instances;
-
-	struct Mesh {
-		GLuint vao;
-		uint count;
-		std::vector<GLuint> buffers;
-	};
-	Container<Mesh> meshes;
-
-	struct ShaderConfig {
-		uint shader;
-		GLuint uniform;
-		std::vector<TextureHandle> textures;
-	};
-	struct Material {
-		std::vector<ShaderConfig> shaders;
-		std::unordered_set<InstanceHandle> instances = {};
-	};
-	Container<Material> materials;
-	MaterialHandle register_material(Material mat) {
-		auto handle = materials.emplace(mat);
-		for (auto& shaderconf : mat.shaders) {
-			shaders.at(shaderconf.shader).materials.emplace(handle);
-		}
-		return handle;
-	}
-
-	struct Shader {
-		GLuint shader;
-		enum Type { Opaque = 1 << 0, Depth = 1 << 1, Shadow = 1 << 2, Skybox = 1 << 4, UI = 1 << 5 };
-		friend inline Type operator|(const Type lhs, const Type rhs) {
-			return static_cast<Type>(static_cast<int>(lhs) | static_cast<int>(rhs));
-		}
-		Type type;
-		std::unordered_set<MaterialHandle> materials = {};
-	};
-	Container<Shader> shaders;
 
 	const int lightmapSize = 4096;
 	const float lightmapCoverage = 300;
@@ -157,23 +235,37 @@ class Core {
 		this->height = height;
 	}
 
-	MeshHandle create_mesh(MeshDef);
-	void delete_mesh(MeshHandle handle);
 	InstanceHandle create_instance(MeshHandle mesh, MaterialHandle mat, mat4 trans = mat4(1.0f)) {
 		InstanceHandle instance = instances.emplace();
-		instance_set_mesh(instance, mesh);
-		instance_set_material(instance, mat);
+
+		instances.at(instance).model = mesh.handle;
+		meshes_ref(mesh.handle);
+
+		instances.at(instance).mat = mat.handle;
+		materials_ref(mat.handle);
+		materials_get(mat).instances.emplace(instance);
+
 		instance_set_trans(instance, trans);
 		return instance;
 	}
-	void instance_set_mesh(InstanceHandle instance, MeshHandle mesh) { instances.at(instance).model = mesh; }
+	void instance_set_mesh(InstanceHandle instance, MeshHandle mesh) {
+		meshes_unref(instances.at(instance).model);
+		instances.at(instance).model = mesh.handle;
+		meshes_ref(mesh.handle);
+	}
 	void instance_set_material(InstanceHandle instance, MaterialHandle mat) {
-		materials.at(instances.at(instance).mat).instances.erase(instance);
-		instances.at(instance).mat = mat;
-		materials.at(mat).instances.emplace(instance);
+		materials_get(instances.at(instance).mat).instances.erase(instance);
+		materials_unref(instances.at(instance).mat);
+		instances.at(instance).mat = mat.handle;
+		materials_ref(mat.handle);
+		materials_get(mat).instances.emplace(instance);
 	}
 	void instance_set_trans(InstanceHandle instance, mat4 trans) { instances.at(instance).trans = trans; }
-	void delete_instance(InstanceHandle instance) { instances.erase(instance); }
+	void delete_instance(InstanceHandle instance) {
+		meshes_unref(instances.at(instance).model);
+		materials_unref(instances.at(instance).mat);
+		instances.erase(instance);
+	}
 
 	void camera_set_pos(mat4 pos) { cameraPos = glm::inverse(pos); }
 	void camera_set_fov(float degrees) { fov = radians(degrees); }
@@ -201,5 +293,9 @@ class Core {
 
 	void run();
 };
+
+typedef Core::MeshHandle MeshHandle;
+typedef Core::ShaderHandle ShaderHandle;
+typedef Core::MaterialHandle MaterialHandle;
 
 } // namespace Render

@@ -7,25 +7,14 @@
 
 namespace Render {
 
-Core::Core(void (*glGetProcAddr(const char*))()) {
-	loadGL(glGetProcAddr);
+void Core::meshes_setup(size_t){};
+void Core::meshes_cleanup(size_t handle) {
+	glDeleteVertexArrays(1, &(meshes_get(handle).vao));
 
-	loadDebugger();
-
-	glCreateBuffers(1, &cameraBuffer);
-	glNamedBufferStorage(cameraBuffer, sizeof(Camera), nullptr, GL_DYNAMIC_STORAGE_BIT);
-	glBindBufferBase(GL_UNIFORM_BUFFER, 0, cameraBuffer);
-
-	glCreateBuffers(1, &dirLightBuffer);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, dirLightBuffer);
-
-	glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &dirLightShadow);
-	glTextureStorage3D(dirLightShadow, 1, GL_DEPTH_COMPONENT32F, lightmapSize, lightmapSize, 8);
-	glTextureParameteri(dirLightShadow, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-	glTextureParameteri(dirLightShadow, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+	glDeleteBuffers(meshes_get(handle).buffers.size(), meshes_get(handle).buffers.data());
 }
 
-uint Core::create_mesh(MeshDef def) {
+MeshHandle Core::create_mesh(MeshDef def) {
 
 	GLuint vertex_buffer, index_buffer, vao;
 	glCreateBuffers(1, &vertex_buffer);
@@ -47,16 +36,45 @@ uint Core::create_mesh(MeshDef def) {
 
 	glVertexArrayElementBuffer(vao, index_buffer);
 
-	return meshes.emplace(
+	return meshes_insert(
 		Mesh{.vao = vao, .count = static_cast<uint>(def.indicies.size()), .buffers = {vertex_buffer, index_buffer}});
 }
 
-void Core::delete_mesh(MeshHandle handle) {
-	glDeleteVertexArrays(1, &(meshes.at(handle).vao));
+void Core::shaders_setup(size_t) {}
+void Core::shaders_cleanup(size_t handle) {
+	assert(shaders_get(handle).materials.empty());
+	glDeleteProgram(shaders_get(handle).shader);
+}
 
-	glDeleteBuffers(meshes.at(handle).buffers.size(), meshes.at(handle).buffers.data());
+void Core::materials_setup(size_t handle) {
+	for (auto& shader_conf : materials_get(handle).shaders) {
+		shaders_ref(shader_conf.shader);
+		shaders_get(shader_conf.shader).materials.emplace(handle);
+	}
+}
+void Core::materials_cleanup(size_t handle) {
+	for (auto& shader_conf : materials_get(handle).shaders) {
+		shaders_get(shader_conf.shader).materials.erase(handle);
+		shaders_unref(shader_conf.shader);
+	}
+}
 
-	meshes.erase(handle);
+Core::Core(void (*glGetProcAddr(const char*))()) {
+	loadGL(glGetProcAddr);
+
+	loadDebugger();
+
+	glCreateBuffers(1, &cameraBuffer);
+	glNamedBufferStorage(cameraBuffer, sizeof(Camera), nullptr, GL_DYNAMIC_STORAGE_BIT);
+	glBindBufferBase(GL_UNIFORM_BUFFER, 0, cameraBuffer);
+
+	glCreateBuffers(1, &dirLightBuffer);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, dirLightBuffer);
+
+	glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &dirLightShadow);
+	glTextureStorage3D(dirLightShadow, 1, GL_DEPTH_COMPONENT32F, lightmapSize, lightmapSize, 8);
+	glTextureParameteri(dirLightShadow, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+	glTextureParameteri(dirLightShadow, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 }
 
 uint Core::create_texture(int width, int height, int channels, TextureFlags flags, void* data) {
@@ -101,17 +119,16 @@ uint Core::create_texture(int width, int height, int channels, TextureFlags flag
 
 void Core::renderScene(Shader::Type type, RenderOrder order) {
 	if (order == RenderOrder::Shader) {
-		for (auto& i : shaders) {
-			Shader& shader = i.second;
+		for (auto& shader : shaders_dense) {
 			if ((shader.type & type) == 0)
 				continue;
 
 			glUseProgram(shader.shader);
 			for (auto mat : shader.materials) {
-				auto& material = materials.at(mat);
+				auto& material = materials_get(mat);
 
 				for (auto shaderConfig : material.shaders) {
-					if (shaderConfig.shader != i.first)
+					if (&shaders_get(shaderConfig.shader) != &shader)
 						continue;
 					glBindBufferBase(GL_UNIFORM_BUFFER, 1, shaderConfig.uniform);
 					glBindTextures(3, shaderConfig.textures.size(), shaderConfig.textures.data());
@@ -120,11 +137,11 @@ void Core::renderScene(Shader::Type type, RenderOrder order) {
 
 				for (auto i : material.instances) {
 					auto& instance = instances.at(i);
-					glBindVertexArray(meshes.at(instance.model).vao);
+					glBindVertexArray(meshes_get(instance.model).vao);
 
 					glUniformMatrix4fv(0, 1, false, value_ptr(instance.trans));
 
-					glDrawElements(GL_TRIANGLES, meshes.at(instance.model).count, GL_UNSIGNED_INT, 0);
+					glDrawElements(GL_TRIANGLES, meshes_get(instance.model).count, GL_UNSIGNED_INT, 0);
 				}
 			}
 		}
@@ -132,19 +149,19 @@ void Core::renderScene(Shader::Type type, RenderOrder order) {
 		for (auto& inst : instances) {
 			auto& i = inst.second;
 
-			glBindVertexArray(meshes.at(i.model).vao);
-			for (auto& shader : materials.at(i.mat).shaders) {
-				if ((shaders.at(shader.shader).type & type) == 0)
+			glBindVertexArray(meshes_get(i.model).vao);
+			for (auto& shader : materials_get(i.mat).shaders) {
+				if ((shaders_get(shader.shader).type & type) == 0)
 					continue;
 
-				glUseProgram(shaders.at(shader.shader).shader);
+				glUseProgram(shaders_get(shader.shader).shader);
 
 				glBindBufferBase(GL_UNIFORM_BUFFER, 1, shader.uniform);
 				glBindTextures(3, shader.textures.size(), shader.textures.data());
 
 				glUniformMatrix4fv(0, 1, false, value_ptr(i.trans));
 
-				glDrawElements(GL_TRIANGLES, meshes.at(i.model).count, GL_UNSIGNED_INT, 0);
+				glDrawElements(GL_TRIANGLES, meshes_get(i.model).count, GL_UNSIGNED_INT, 0);
 			}
 		}
 	}

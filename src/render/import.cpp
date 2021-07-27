@@ -76,7 +76,7 @@ Model importModel(std::string filename) {
 	assert(scene && !(scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) && scene->mRootNode);
 
 	std::vector<MeshHandle> meshes;
-	meshes.resize(scene->mNumMeshes);
+	meshes.reserve(scene->mNumMeshes);
 	for (uint m = 0; m < scene->mNumMeshes; m++) {
 		aiMesh* importMesh = scene->mMeshes[m];
 		MeshDef mesh;
@@ -95,11 +95,11 @@ Model importModel(std::string filename) {
 			mesh.indicies.push_back(face.mIndices[1]);
 			mesh.indicies.push_back(face.mIndices[2]);
 		}
-		meshes[m] = render.create_mesh(mesh);
+		meshes.push_back(render.create_mesh(mesh));
 	}
 
 	std::vector<MaterialHandle> materials;
-	materials.resize(scene->mNumMaterials);
+	materials.reserve(scene->mNumMaterials);
 	for (uint m = 0; m < scene->mNumMaterials; m++) {
 		aiMaterial* importMaterial = scene->mMaterials[m];
 		aiColor4D albedoFactor;
@@ -117,14 +117,14 @@ Model importModel(std::string filename) {
 		std::optional<TextureHandle> emissiveTexture =
 			loadTexture(importMaterial, aiTextureType_EMISSIVE, 0, scene, render);
 
-		materials[m] = render.create_pbr_material(MaterialPBR{
+		materials.push_back(render.create_pbr_material(MaterialPBR{
 			.albedoFactor = convert(albedoFactor),
 			.albedoTexture = albedoTex,
 			.metalFactor = metalFactor,
 			.roughFactor = roughFactor,
 			.metalRoughTexture = metalRoughTex,
 			.emissiveFactor = convert(emissiveFactor),
-			.emissiveTexture = emissiveTexture});
+			.emissiveTexture = emissiveTexture}));
 	}
 
 	Model model{.render = render};

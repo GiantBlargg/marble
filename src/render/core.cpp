@@ -48,16 +48,18 @@ void Core::shaders_cleanup(size_t handle) {
 
 void Core::materials_setup(size_t handle) {
 	for (auto& shader_conf : materials_get(handle).shaders) {
-		shaders_ref(shader_conf.shader);
 		shaders_get(shader_conf.shader).materials.emplace(handle);
 	}
 }
 void Core::materials_cleanup(size_t handle) {
+	assert(materials_get(handle).surfaces.empty());
 	for (auto& shader_conf : materials_get(handle).shaders) {
 		shaders_get(shader_conf.shader).materials.erase(handle);
-		shaders_unref(shader_conf.shader);
 	}
 }
+
+void Core::surfaces_setup(size_t handle) { materials_get(surfaces_get(handle).material).surfaces.emplace(handle); }
+void Core::surfaces_cleanup(size_t handle) { materials_get(surfaces_get(handle).material).surfaces.erase(handle); }
 
 Core::Core(void (*glGetProcAddr(const char*))()) {
 	loadGL(glGetProcAddr);
@@ -135,22 +137,20 @@ void Core::renderScene(Shader::Type type, RenderOrder order) {
 					break;
 				}
 
-				for (auto i : material.instances) {
-					auto& instance = instances.at(i);
-					glBindVertexArray(meshes_get(instance.model).vao);
+				for (auto& s : material.surfaces) {
+					auto& surface = surfaces_get(s);
+					glBindVertexArray(meshes_get(surface.mesh).vao);
 
-					glUniformMatrix4fv(0, 1, false, value_ptr(instance.trans));
+					glUniformMatrix4fv(0, 1, false, value_ptr(surface.transform));
 
-					glDrawElements(GL_TRIANGLES, meshes_get(instance.model).count, GL_UNSIGNED_INT, 0);
+					glDrawElements(GL_TRIANGLES, meshes_get(surface.mesh).count, GL_UNSIGNED_INT, 0);
 				}
 			}
 		}
 	} else {
-		for (auto& inst : instances) {
-			auto& i = inst.second;
-
-			glBindVertexArray(meshes_get(i.model).vao);
-			for (auto& shader : materials_get(i.mat).shaders) {
+		for (auto& surface : surfaces_dense) {
+			glBindVertexArray(meshes_get(surface.mesh).vao);
+			for (auto& shader : materials_get(surface.material).shaders) {
 				if ((shaders_get(shader.shader).type & type) == 0)
 					continue;
 
@@ -159,9 +159,9 @@ void Core::renderScene(Shader::Type type, RenderOrder order) {
 				glBindBufferBase(GL_UNIFORM_BUFFER, 1, shader.uniform);
 				glBindTextures(3, shader.textures.size(), shader.textures.data());
 
-				glUniformMatrix4fv(0, 1, false, value_ptr(i.trans));
+				glUniformMatrix4fv(0, 1, false, value_ptr(surface.transform));
 
-				glDrawElements(GL_TRIANGLES, meshes_get(i.model).count, GL_UNSIGNED_INT, 0);
+				glDrawElements(GL_TRIANGLES, meshes_get(surface.mesh).count, GL_UNSIGNED_INT, 0);
 			}
 		}
 	}

@@ -118,7 +118,7 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 
 		MeshHandle skyboxMesh = meshes_insert(
 			Mesh{.vao = vao, .count = static_cast<uint>(indicies.size()), .buffers = {vertex_buffer, index_buffer}});
-		skybox = create_instance(skyboxMesh, skyboxMaterial);
+		skybox = surface_create(skyboxMesh, skyboxMaterial);
 	}
 
 	glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &skyboxCubemap);
@@ -224,7 +224,7 @@ void Render::update_skybox() {
 	glCreateFramebuffers(1, &framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-	glBindVertexArray(meshes_get(instances.at(skybox).model).vao);
+	glBindVertexArray(meshes_get(surfaces_get(skybox).mesh).vao);
 
 	static GLuint irradianceShader = load_shader_program(
 		{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/irradiance.frag", GL_FRAGMENT_SHADER}});
@@ -242,7 +242,7 @@ void Render::update_skybox() {
 
 		glViewport(0, 0, irradianceSize, irradianceSize);
 		glClear(GL_COLOR_BUFFER_BIT);
-		glDrawElements(GL_TRIANGLES, meshes_get(instances.at(skybox).model).count, GL_UNSIGNED_INT, 0);
+		glDrawElements(GL_TRIANGLES, meshes_get(surfaces_get(skybox).mesh).count, GL_UNSIGNED_INT, 0);
 	}
 
 	static GLuint reflectionShader = load_shader_program(
@@ -265,7 +265,7 @@ void Render::update_skybox() {
 			glNamedBufferSubData(cameraBuffer, 0, sizeof(Camera), &cam);
 
 			glClear(GL_COLOR_BUFFER_BIT);
-			glDrawElements(GL_TRIANGLES, meshes_get(instances.at(skybox).model).count, GL_UNSIGNED_INT, 0);
+			glDrawElements(GL_TRIANGLES, meshes_get(surfaces_get(skybox).mesh).count, GL_UNSIGNED_INT, 0);
 		}
 	}
 

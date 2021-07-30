@@ -19,7 +19,7 @@ class ModelInstance {
 	Core& render;
 
 	struct Instance {
-		InstanceHandle handle;
+		SurfaceHandle handle;
 		mat4 baseTrans;
 	};
 	std::vector<Instance> instances;

@@ -22,7 +22,7 @@ class Render : public Core {
 	const int reflectionLevels = 5;
 	const int reflectionBRDFSize = 256;
 
-	InstanceHandle skybox;
+	SurfaceHandle skybox;
 	TextureHandle skyboxCubemap;
 	TextureHandle irradiance;
 	TextureHandle reflection;
@@ -37,7 +37,7 @@ class Render : public Core {
 	MaterialHandle create_pbr_material(MaterialPBR);
 
 	void set_skybox_material(MaterialHandle material, bool update = true) {
-		instance_set_material(skybox, material);
+		surface_set_material(skybox, material);
 		if (update)
 			update_skybox();
 	}

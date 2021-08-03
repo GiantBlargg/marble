@@ -9,7 +9,7 @@ struct Model {
 	struct Surface {
 		MeshHandle mesh;
 		MaterialHandle material;
-		mat4 transform;
+		mat4 transform = mat4(1.0f);
 	};
 	std::vector<Surface> surfaces;
 };

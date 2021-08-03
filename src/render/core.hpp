@@ -2,9 +2,7 @@
 
 #include <glm/gtc/integer.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <glm/mat4x4.hpp>
-#include <glm/trigonometric.hpp>
-#include <memory>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -12,19 +10,6 @@
 namespace Render {
 
 using namespace glm;
-
-typedef unsigned int GLuint;
-typedef int GLsizei;
-
-struct MeshDef {
-	struct Vertex {
-		vec3 pos;
-		vec3 normal;
-		vec2 uv;
-	};
-	std::vector<Vertex> verticies;
-	std::vector<uint32_t> indicies;
-};
 
 #define RESOURCE_CONTAINER(T, name, Self)                                                                              \
   private:                                                                                                             \
@@ -184,19 +169,58 @@ typedef uint DirLightHandle;
 typedef uint TextureHandle;
 
 class Core {
+	// GL typecasts
+  protected:
+	typedef int GLsizei;
+	typedef unsigned int GLuint;
+	typedef signed long int GLsizeiptr;
 
 	// Begin Resources
 
   protected:
+	struct Buffer {
+		GLuint buffer;
+	};
+	RESOURCE_CONTAINER(Buffer, buffers, Core)
+  protected:
+	BufferHandle buffer_create(GLsizeiptr size, const void* data);
+
+  public:
+	std::vector<BufferHandle> buffers_create(std::vector<std::vector<uint8_t>>);
+	template <class T> BufferHandle buffer_create(std::vector<T> data) {
+		return buffer_create(sizeof(T) * data.size(), data.data());
+	}
+
+  protected:
 	struct Mesh {
 		GLuint vao;
-		uint count;
-		std::vector<GLuint> buffers;
+		GLsizei count;
+		std::vector<BufferHandle> buffers;
+		bool indexed = true;
 	};
 	RESOURCE_CONTAINER(Mesh, meshes, Core)
 
   public:
-	MeshHandle create_mesh(MeshDef);
+	struct MeshDef {
+		struct Binding {
+			BufferHandle buffer;
+			uint64_t offset = 0;
+			uint64_t stride;
+		};
+		std::array<std::optional<Binding>, 16> bindings;
+		struct Accessor {
+			uint8_t binding;
+			bool normalized = false;
+			int count; // Per item
+			enum class Type { BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT };
+			Type type;
+			uint64_t relativeOffset = 0;
+		};
+		std::array<std::optional<Accessor>, 16> attributes;
+		std::optional<BufferHandle> indicies;
+		int32_t count;
+	};
+	MeshHandle mesh_create(MeshDef);
 
   protected:
 	struct Shader {
@@ -326,6 +350,7 @@ class Core {
 	void run();
 };
 
+typedef Core::BufferHandle BufferHandle;
 typedef Core::MeshHandle MeshHandle;
 typedef Core::ShaderHandle ShaderHandle;
 typedef Core::MaterialHandle MaterialHandle;

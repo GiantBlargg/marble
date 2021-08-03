@@ -6,43 +6,107 @@
 #include "gl.hpp"
 
 namespace Render {
+void Core::buffers_setup(size_t) {}
+void Core::buffers_cleanup(size_t handle) { glDeleteBuffers(1, &buffers_get(handle).buffer); }
+
+std::vector<BufferHandle> Core::buffers_create(std::vector<std::vector<uint8_t>> data) {
+	std::vector<GLuint> buffers;
+	buffers.resize(data.size());
+	glCreateBuffers(buffers.size(), buffers.data());
+
+	for (size_t i = 0; i < buffers.size(); i++) {
+		glNamedBufferStorage(buffers[i], data[i].size(), data[i].data(), 0);
+	}
+
+	std::vector<BufferHandle> handles;
+	for (GLuint buffer : buffers) {
+		handles.emplace_back(buffers_insert(Buffer{buffer}));
+	}
+	return handles;
+}
+BufferHandle Core::buffer_create(GLsizeiptr size, const void* data) {
+	GLuint buffer;
+	glCreateBuffers(1, &buffer);
+	glNamedBufferStorage(buffer, size, data, 0);
+	return buffers_insert(Buffer{buffer});
+}
 
 void Core::meshes_setup(size_t){};
-void Core::meshes_cleanup(size_t handle) {
-	glDeleteVertexArrays(1, &(meshes_get(handle).vao));
+void Core::meshes_cleanup(size_t handle) { glDeleteVertexArrays(1, &(meshes_get(handle).vao)); }
 
-	glDeleteBuffers(meshes_get(handle).buffers.size(), meshes_get(handle).buffers.data());
+GLint get_format(Core::MeshDef::Accessor::Type& type) {
+	const static std::unordered_map<Core::MeshDef::Accessor::Type, GLint> format_map = {
+		{Core::MeshDef::Accessor::Type::BYTE, GL_BYTE},
+		{Core::MeshDef::Accessor::Type::UNSIGNED_BYTE, GL_UNSIGNED_BYTE},
+		{Core::MeshDef::Accessor::Type::SHORT, GL_SHORT},
+		{Core::MeshDef::Accessor::Type::UNSIGNED_SHORT, GL_UNSIGNED_SHORT},
+		{Core::MeshDef::Accessor::Type::INT, GL_INT},
+		{Core::MeshDef::Accessor::Type::UNSIGNED_INT, GL_UNSIGNED_INT},
+		{Core::MeshDef::Accessor::Type::FLOAT, GL_FLOAT},
+	};
+	return format_map.at(type);
 }
 
-MeshHandle Core::create_mesh(MeshDef def) {
+MeshHandle Core::mesh_create(MeshDef def) {
+	std::vector<BufferHandle> buffers;
 
-	GLuint vertex_buffer, index_buffer, vao;
-	glCreateBuffers(1, &vertex_buffer);
-	glCreateBuffers(1, &index_buffer);
-	glCreateVertexArrays(1, &vao);
+	GLuint vertex_array;
+	glCreateVertexArrays(1, &vertex_array);
+	for (size_t i = 0; i < def.bindings.size(); i++) {
+		if (def.bindings.at(i).has_value()) {
+			auto& binding = def.bindings.at(i).value();
+			buffers.push_back(binding.buffer);
+			glVertexArrayVertexBuffer(
+				vertex_array, i, buffers_get(binding.buffer).buffer, binding.offset, binding.stride);
+		}
+	}
+	for (size_t i = 0; i < def.attributes.size(); i++) {
+		if (def.attributes.at(i).has_value()) {
+			auto& attrib = def.attributes.at(i).value();
 
-	glNamedBufferStorage(vertex_buffer, vector_size(def.verticies), def.verticies.data(), 0);
-	glNamedBufferStorage(index_buffer, vector_size(def.indicies), def.indicies.data(), 0);
-
-	glVertexArrayVertexBuffer(vao, 0, vertex_buffer, 0, sizeof(MeshDef::Vertex));
-	glEnableVertexArrayAttrib(vao, 0);
-	glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, false, offsetof(MeshDef::Vertex, pos));
-	glVertexArrayVertexBuffer(vao, 1, vertex_buffer, 0, sizeof(MeshDef::Vertex));
-	glEnableVertexArrayAttrib(vao, 1);
-	glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, false, offsetof(MeshDef::Vertex, normal));
-	glVertexArrayVertexBuffer(vao, 2, vertex_buffer, 0, sizeof(MeshDef::Vertex));
-	glEnableVertexArrayAttrib(vao, 2);
-	glVertexArrayAttribFormat(vao, 2, 2, GL_FLOAT, false, offsetof(MeshDef::Vertex, uv));
-
-	glVertexArrayElementBuffer(vao, index_buffer);
+			glEnableVertexArrayAttrib(vertex_array, i);
+			glVertexArrayAttribFormat(
+				vertex_array, i, attrib.count, get_format(attrib.type), attrib.normalized, attrib.relativeOffset);
+			glVertexArrayAttribBinding(vertex_array, i, attrib.binding);
+		}
+	}
+	if (def.indicies.has_value()) {
+		glVertexArrayElementBuffer(vertex_array, buffers_get(def.indicies.value()).buffer);
+	}
 
 	return meshes_insert(
-		Mesh{.vao = vao, .count = static_cast<uint>(def.indicies.size()), .buffers = {vertex_buffer, index_buffer}});
+		Mesh{.vao = vertex_array, .count = def.count, .buffers = buffers, .indexed = def.indicies.has_value()});
 }
+
+// MeshHandle Core::create_mesh(MeshDef def) {
+
+// 	GLuint vertex_buffer, index_buffer, vao;
+// 	glCreateBuffers(1, &vertex_buffer);
+// 	glCreateBuffers(1, &index_buffer);
+// 	glCreateVertexArrays(1, &vao);
+
+// 	glNamedBufferStorage(vertex_buffer, vector_size(def.verticies), def.verticies.data(), 0);
+// 	glNamedBufferStorage(index_buffer, vector_size(def.indicies), def.indicies.data(), 0);
+
+// 	glVertexArrayVertexBuffer(vao, 0, vertex_buffer, 0, sizeof(MeshDef::Vertex));
+// 	glEnableVertexArrayAttrib(vao, 0);
+// 	glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, false, offsetof(MeshDef::Vertex, pos));
+// 	glVertexArrayVertexBuffer(vao, 1, vertex_buffer, 0, sizeof(MeshDef::Vertex));
+// 	glEnableVertexArrayAttrib(vao, 1);
+// 	glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, false, offsetof(MeshDef::Vertex, normal));
+// 	glVertexArrayVertexBuffer(vao, 2, vertex_buffer, 0, sizeof(MeshDef::Vertex));
+// 	glEnableVertexArrayAttrib(vao, 2);
+// 	glVertexArrayAttribFormat(vao, 2, 2, GL_FLOAT, false, offsetof(MeshDef::Vertex, uv));
+
+// 	glVertexArrayElementBuffer(vao, index_buffer);
+
+// 	return meshes_insert(
+// 		Mesh{.vao = vao, .count = static_cast<uint>(def.indicies.size()), .buffers = {vertex_buffer, index_buffer}});
+// }
 
 void Core::shaders_setup(size_t) {}
 void Core::shaders_cleanup(size_t handle) {
-	assert(shaders_get(handle).materials.empty());
+	// assert(shaders_get(handle).materials.empty());
 	glDeleteProgram(shaders_get(handle).shader);
 }
 
@@ -52,7 +116,7 @@ void Core::materials_setup(size_t handle) {
 	}
 }
 void Core::materials_cleanup(size_t handle) {
-	assert(materials_get(handle).surfaces.empty());
+	// assert(materials_get(handle).surfaces.empty());
 	for (auto& shader_conf : materials_get(handle).shaders) {
 		shaders_get(shader_conf.shader).materials.erase(handle);
 	}
@@ -143,7 +207,10 @@ void Core::renderScene(Shader::Type type, RenderOrder order) {
 
 					glUniformMatrix4fv(0, 1, false, value_ptr(surface.transform));
 
-					glDrawElements(GL_TRIANGLES, meshes_get(surface.mesh).count, GL_UNSIGNED_INT, 0);
+					if (meshes_get(surface.mesh).indexed)
+						glDrawElements(GL_TRIANGLES, meshes_get(surface.mesh).count, GL_UNSIGNED_INT, 0);
+					else
+						glDrawArrays(GL_TRIANGLES, 0, meshes_get(surface.mesh).count);
 				}
 			}
 		}
@@ -161,7 +228,10 @@ void Core::renderScene(Shader::Type type, RenderOrder order) {
 
 				glUniformMatrix4fv(0, 1, false, value_ptr(surface.transform));
 
-				glDrawElements(GL_TRIANGLES, meshes_get(surface.mesh).count, GL_UNSIGNED_INT, 0);
+				if (meshes_get(surface.mesh).indexed)
+					glDrawElements(GL_TRIANGLES, meshes_get(surface.mesh).count, GL_UNSIGNED_INT, 0);
+				else
+					glDrawArrays(GL_TRIANGLES, 0, meshes_get(surface.mesh).count);
 			}
 		}
 	}

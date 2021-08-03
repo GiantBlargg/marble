@@ -19,7 +19,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install libglfw3-dev libassimp-dev
+      run: sudo apt-get update && sudo apt-get install libglfw3-dev
       if: runner.os == 'Linux'
 
     - name: Configure CMake

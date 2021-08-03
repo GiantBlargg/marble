@@ -102,22 +102,20 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 	};
 		// clang-format on
 
-		GLuint vertex_buffer, index_buffer, vao;
-		glCreateBuffers(1, &vertex_buffer);
-		glCreateBuffers(1, &index_buffer);
+		GLuint vao;
 		glCreateVertexArrays(1, &vao);
 
-		glNamedBufferStorage(vertex_buffer, vector_size(verticies), verticies.data(), 0);
-		glNamedBufferStorage(index_buffer, vector_size(indicies), indicies.data(), 0);
+		BufferHandle vertex_handle(buffer_create(verticies));
+		BufferHandle index_handle(buffer_create(indicies));
 
-		glVertexArrayVertexBuffer(vao, 0, vertex_buffer, 0, sizeof(vec3));
+		glVertexArrayVertexBuffer(vao, 0, buffers_get(vertex_handle).buffer, 0, sizeof(vec3));
 		glEnableVertexArrayAttrib(vao, 0);
 		glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, false, 0);
 
-		glVertexArrayElementBuffer(vao, index_buffer);
+		glVertexArrayElementBuffer(vao, buffers_get(index_handle).buffer);
 
 		MeshHandle skyboxMesh = meshes_insert(
-			Mesh{.vao = vao, .count = static_cast<uint>(indicies.size()), .buffers = {vertex_buffer, index_buffer}});
+			Mesh{.vao = vao, .count = static_cast<int32_t>(indicies.size()), .buffers = {vertex_handle, index_handle}});
 		skybox = surface_create(skyboxMesh, skyboxMaterial);
 	}
 

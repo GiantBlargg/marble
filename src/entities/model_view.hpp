@@ -1,7 +1,9 @@
 #pragma once
 
 #include "engine.hpp"
+#include "render/gltf.hpp"
 #include "render/import.hpp"
+
 #include <string>
 
 class ModelView : public Entity {
@@ -14,7 +16,8 @@ class ModelView : public Entity {
 	ModelView(
 		std::string modelPath = "assets/DamagedHelmet.glb",
 		std::string skyboxPath = "assets/neurathen_rock_castle_4k.hdr")
-		: model(Render::importModel(modelPath)), skyboxTexture(Render::importSkybox(skyboxPath)){};
+		: model(Render::load_gltf(modelPath, Engine::get_instance()->render)),
+		  skyboxTexture(Render::importSkybox(skyboxPath)){};
 	void enter() override {
 
 		Engine::get_instance()->render.set_skybox_rect_texture(skyboxTexture);

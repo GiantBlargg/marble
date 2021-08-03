@@ -2,7 +2,18 @@ include(FetchContent)
 
 add_library(libs INTERFACE)
 
-find_package(glfw3 3.3 REQUIRED CONFIG)
+if(UNIX)
+	find_package(glfw3 3.3 REQUIRED CONFIG)
+else()
+	FetchContent_Declare(GLFW
+		GIT_REPOSITORY https://github.com/glfw/glfw.git
+		GIT_TAG 3.3.4
+	)
+	set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+	set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+	set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+	FetchContent_MakeAvailable(GLFW)
+endif()
 target_compile_definitions(libs INTERFACE GLFW_INCLUDE_NONE)
 target_link_libraries(libs INTERFACE glfw)
 
@@ -28,6 +39,8 @@ target_link_libraries(libs INTERFACE imgui)
 FetchContent_Declare(json
 	GIT_REPOSITORY https://github.com/nlohmann/json.git
 	GIT_TAG v3.9.1)
+set(JSON_BuildTests OFF)
+set(JSON_Install OFF)
 set(JSON_MultipleHeaders ON)
 set(JSON_ImplicitConversions OFF)
 FetchContent_MakeAvailable(json)

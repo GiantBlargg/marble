@@ -5,7 +5,7 @@ if(UNIX)
 	target_include_directories(gl INTERFACE ${CMAKE_CURRENT_LIST_DIR}/glvnd/)
 else()
 	FetchContent_Declare(GLEW
-		URL https://github.com/nigels-com/glew/releases/download/glew-2.1.0/glew-2.1.0.zip
+		URL https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0.zip
 	)
 	FetchContent_GetProperties(GLEW)
 	if(NOT glew_POPULATED)

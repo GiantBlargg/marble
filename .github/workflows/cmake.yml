@@ -3,44 +3,41 @@ name: CMake
 on: [push]
 
 jobs:
-  build:
-    # The CMake configure and build commands are platform agnostic and should work equally
-    # well on Windows or Mac.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # os: [ubuntu-latest, windows-latest]
-        os: [ubuntu-latest]
-        build_type: [Release, Debug]
+  build-linux:
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install libglfw3-dev
-      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install ninja-build libglfw3-dev
 
     - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/dist
+      run: cmake -B ${{github.workspace}}/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/dist
 
     - name: Build
-      # Build your program with the given configuration
-      run: cmake --build ${{github.workspace}}/build --target install --config ${{ matrix.build_type }} -j$(nproc)
+      run: cmake --build ${{github.workspace}}/build --target install
 
     - name: Upload Artifact
-      if: matrix.build_type == 'Release'
       uses: actions/upload-artifact@v2
       with:
-        name: marble-${{ runner.os }}
+        name: marble-linux
         path: ${{github.workspace}}/dist/
-    
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/dist
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --target install --config Release
+
     - name: Upload Artifact
-      if: matrix.build_type != 'Release'
       uses: actions/upload-artifact@v2
       with:
-        name: marble-${{ runner.os }}-${{ matrix.build_type }}
+        name: marble-windows
         path: ${{github.workspace}}/dist/

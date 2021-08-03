@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <glm/gtc/integer.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <optional>

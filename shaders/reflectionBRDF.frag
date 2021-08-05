@@ -1,9 +1,10 @@
-#version 450 core
+#version 460 core
+
 // Code from: https://learnopengl.com/PBR/IBL/Specular-IBL
 
 layout(location = 0) in vec2 TexCoords;
 
-out vec2 outColour;
+layout(location = 0) out vec2 outColour;
 
 const float pi = 3.1415927;
 
@@ -15,14 +16,12 @@ float RadicalInverse_VdC(uint bits) {
 	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
 	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
-vec2 Hammersley(uint i, uint N) {
-	return vec2(float(i)/float(N), RadicalInverse_VdC(i));
-}
+vec2 Hammersley(uint i, uint N) { return vec2(float(i) / float(N), RadicalInverse_VdC(i)); }
 vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness) {
 	float a = roughness * roughness;
 
 	float phi = 2.0 * pi * Xi.x;
-	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a * a - 1.0) * Xi.y));
 	float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
 
 	// from spherical coordinates to cartesian coordinates
@@ -40,7 +39,7 @@ float GeometrySchlickGGX(float NdotV, float roughness) {
 	float a = roughness;
 	float k = (a * a) / 2.0;
 
-	float nom   = NdotV;
+	float nom = NdotV;
 	float denom = NdotV * (1.0 - k) + k;
 
 	return nom / denom;
@@ -55,7 +54,7 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 }
 
 vec2 IntegrateBRDF(float NdotV, float roughness) {
-	vec3 V = vec3(sqrt(1.0 - NdotV*NdotV), 0.0, NdotV);
+	vec3 V = vec3(sqrt(1.0 - NdotV * NdotV), 0.0, NdotV);
 
 	float A = 0.0;
 	float B = 0.0;
@@ -63,16 +62,16 @@ vec2 IntegrateBRDF(float NdotV, float roughness) {
 	vec3 N = vec3(0.0, 0.0, 1.0);
 
 	const uint SAMPLE_COUNT = 1024u;
-	for(uint i = 0u; i < SAMPLE_COUNT; ++i) {
+	for (uint i = 0u; i < SAMPLE_COUNT; ++i) {
 		vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-		vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
-		vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+		vec3 H = ImportanceSampleGGX(Xi, N, roughness);
+		vec3 L = normalize(2.0 * dot(V, H) * H - V);
 
 		float NdotL = max(L.z, 0.0);
 		float NdotH = max(H.z, 0.0);
 		float VdotH = max(dot(V, H), 0.0);
 
-		if(NdotL > 0.0) {
+		if (NdotL > 0.0) {
 			float G = GeometrySmith(N, V, L, roughness);
 			float G_Vis = (G * VdotH) / (NdotH * NdotV);
 			float Fc = pow(1.0 - VdotH, 5.0);
@@ -85,6 +84,4 @@ vec2 IntegrateBRDF(float NdotV, float roughness) {
 	B /= float(SAMPLE_COUNT);
 	return vec2(A, B);
 }
-void main() {
-	outColour = IntegrateBRDF(TexCoords.x, TexCoords.y);
-}
+void main() { outColour = IntegrateBRDF(TexCoords.x, TexCoords.y); }

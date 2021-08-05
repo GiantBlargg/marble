@@ -1,11 +1,12 @@
-#version 450 core
+#version 460 core
+
 // Code from: https://learnopengl.com/PBR/IBL/Diffuse-irradiance
 
 layout(location = 0) in vec3 TexCoords;
 
 layout(binding = 1) uniform samplerCube cubeSkybox;
 
-out vec4 outColour;
+layout(location = 0) out vec4 outColour;
 
 const float pi = 3.1415927;
 
@@ -18,13 +19,13 @@ void main() {
 	up = cross(normal, right);
 
 	float sampleDelta = 0.025;
-	float nrSamples = 0.0; 
-	for(float phi = 0.0; phi < 2.0 * pi; phi += sampleDelta) {
-		for(float theta = 0.0; theta < 0.5 * pi; theta += sampleDelta) {
+	float nrSamples = 0.0;
+	for (float phi = 0.0; phi < 2.0 * pi; phi += sampleDelta) {
+		for (float theta = 0.0; theta < 0.5 * pi; theta += sampleDelta) {
 			// spherical to cartesian (in tangent space)
-			vec3 tangentSample = vec3(sin(theta) * cos(phi),  sin(theta) * sin(phi), cos(theta));
+			vec3 tangentSample = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
 			// tangent space to world
-			vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * normal; 
+			vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * normal;
 
 			irradiance += texture(cubeSkybox, sampleVec).rgb * cos(theta) * sin(theta);
 			nrSamples++;

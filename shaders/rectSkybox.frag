@@ -1,10 +1,10 @@
-#version 450 core
+#version 460 core
 
 layout(location = 0) in vec3 TexCoords;
 
 layout(binding = 3) uniform sampler2D rectSkybox;
 
-out vec4 outColour;
+layout(location = 0) out vec4 outColour;
 
 const float pi = 3.1415927;
 
@@ -15,6 +15,4 @@ vec2 equirect(vec3 v) {
 	return uv;
 }
 
-void main() {
-	outColour = texture(rectSkybox, equirect(normalize(TexCoords)));
-}
+void main() { outColour = texture(rectSkybox, equirect(normalize(TexCoords))); }

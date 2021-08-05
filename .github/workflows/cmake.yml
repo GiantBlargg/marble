@@ -4,13 +4,17 @@ on: [push]
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
 
     - name: Install Dependencies
-      run: sudo apt-get update && sudo apt-get install ninja-build libglfw3-dev
+      run: |
+        wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+        sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-focal.list https://packages.lunarg.com/vulkan/lunarg-vulkan-focal.list
+        sudo apt-get update
+        sudo apt-get install ninja-build libglfw3-dev shaderc
 
     - name: Configure CMake
       run: cmake -B ${{github.workspace}}/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/dist
@@ -22,22 +26,4 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: marble-linux
-        path: ${{github.workspace}}/dist/
-
-  build-windows:
-    runs-on: windows-latest
-
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/dist
-
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --target install --config Release
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: marble-windows
         path: ${{github.workspace}}/dist/

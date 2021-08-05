@@ -1,4 +1,5 @@
-#version 450 core
+#version 460 core
+
 // Code from: https://learnopengl.com/PBR/IBL/Specular-IBL
 
 layout(location = 0) in vec3 TexCoords;
@@ -7,7 +8,7 @@ layout(binding = 1) uniform samplerCube environmentMap;
 
 layout(location = 1) uniform float roughness;
 
-out vec4 outColour;
+layout(location = 0) out vec4 outColour;
 
 const float pi = 3.1415927;
 
@@ -19,14 +20,12 @@ float RadicalInverse_VdC(uint bits) {
 	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
 	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
-vec2 Hammersley(uint i, uint N) {
-	return vec2(float(i)/float(N), RadicalInverse_VdC(i));
-}
+vec2 Hammersley(uint i, uint N) { return vec2(float(i) / float(N), RadicalInverse_VdC(i)); }
 vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness) {
 	float a = roughness * roughness;
 
 	float phi = 2.0 * pi * Xi.x;
-	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a * a - 1.0) * Xi.y));
 	float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
 
 	// from spherical coordinates to cartesian coordinates
@@ -48,13 +47,13 @@ void main() {
 	const uint SAMPLE_COUNT = 1024u;
 	float totalWeight = 0.0;
 	vec3 prefilteredColor = vec3(0.0);
-	for(uint i = 0u; i < SAMPLE_COUNT; ++i) {
+	for (uint i = 0u; i < SAMPLE_COUNT; ++i) {
 		vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-		vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
-		vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+		vec3 H = ImportanceSampleGGX(Xi, N, roughness);
+		vec3 L = normalize(2.0 * dot(V, H) * H - V);
 
 		float NdotL = max(dot(N, L), 0.0);
-		if(NdotL > 0.0) {
+		if (NdotL > 0.0) {
 			prefilteredColor += texture(environmentMap, L).rgb * NdotL;
 			totalWeight += NdotL;
 		}

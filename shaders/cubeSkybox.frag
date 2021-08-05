@@ -1,11 +1,9 @@
-#version 450 core
+#version 460 core
 
 layout(location = 0) in vec3 TexCoords;
 
 layout(binding = 3) uniform samplerCube cubeSkybox;
 
-out vec4 outColour;
+layout(location = 0) out vec4 outColour;
 
-void main() {
-	outColour = texture(cubeSkybox, normalize(TexCoords));
-}
+void main() { outColour = texture(cubeSkybox, normalize(TexCoords)); }

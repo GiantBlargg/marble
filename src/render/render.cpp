@@ -8,26 +8,20 @@
 
 namespace Render {
 
-struct ShaderStage {
-	std::string filename;
+struct SprivStage {
+	std::vector<uint32_t> data;
 	GLenum shaderType;
+	std::string entryPoint = "main";
 };
 
-GLuint load_shader_program(std::vector<ShaderStage> stages) {
+GLuint load_spirv_program(std::vector<SprivStage> stages) {
 	auto program = glCreateProgram();
 
 	for (auto stage : stages) {
-		std::string shaderCode;
-		std::ifstream shaderFile;
-		shaderFile.open(stage.filename);
-		std::stringstream shaderStream;
-		shaderStream << shaderFile.rdbuf();
-		shaderFile.close();
-		shaderCode = shaderStream.str();
-		const char* cShaderCode = shaderCode.c_str();
 		auto shader = glCreateShader(stage.shaderType);
-		glShaderSource(shader, 1, &cShaderCode, 0);
-		glCompileShader(shader);
+		glShaderBinary(
+			1, &shader, GL_SHADER_BINARY_FORMAT_SPIR_V, stage.data.data(), stage.data.size() * sizeof(uint32_t));
+		glSpecializeShader(shader, stage.entryPoint.c_str(), 0, nullptr, nullptr);
 		glAttachShader(program, shader);
 	}
 
@@ -45,10 +39,22 @@ struct PBR {
 };
 MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
 	static ShaderHandle shader = shaders_insert(Shader{
-		load_shader_program({{"shaders/default.vert", GL_VERTEX_SHADER}, {"shaders/pbr.frag", GL_FRAGMENT_SHADER}}),
+		load_spirv_program(
+			{{
+#include "shaders/default.vert"
+				 , GL_VERTEX_SHADER},
+			 {
+#include "shaders/pbr.frag"
+				 , GL_FRAGMENT_SHADER}}),
 		Shader::Type::Opaque});
 	static ShaderHandle depthShader = shaders_insert(Shader{
-		load_shader_program({{"shaders/default.vert", GL_VERTEX_SHADER}, {"shaders/depth.frag", GL_FRAGMENT_SHADER}}),
+		load_spirv_program(
+			{{
+#include "shaders/default.vert"
+				 , GL_VERTEX_SHADER},
+			 {
+#include "shaders/depth.frag"
+				 , GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth | Shader::Type::Shadow});
 
 	GLuint uniform;
@@ -81,8 +87,13 @@ MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
 Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 	{
 		ShaderHandle skyboxShader = shaders_insert(Shader{
-			load_shader_program(
-				{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/testSkybox.frag", GL_FRAGMENT_SHADER}}),
+			load_spirv_program(
+				{{
+#include "shaders/skybox.vert"
+					 , GL_VERTEX_SHADER},
+				 {
+#include "shaders/testSkybox.frag"
+					 , GL_FRAGMENT_SHADER}}),
 			Shader::Type::Skybox});
 		MaterialHandle skyboxMaterial =
 			materials_insert(Material{{{.shader = skyboxShader, .uniform = 0, .textures = {}}}});
@@ -141,8 +152,14 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-		static GLuint reflectionBRDFShader = load_shader_program(
-			{{"shaders/quad.vert", GL_VERTEX_SHADER}, {"shaders/reflectionBRDF.frag", GL_FRAGMENT_SHADER}});
+		static GLuint reflectionBRDFShader = load_spirv_program(
+			{{
+#include "shaders/quad.vert"
+				 , GL_VERTEX_SHADER},
+			 {
+#include "shaders/reflectionBRDF.frag"
+				 , GL_FRAGMENT_SHADER}});
+
 		glUseProgram(reflectionBRDFShader);
 		mat4 transform(1.0f);
 		glUniformMatrix4fv(0, 1, false, value_ptr(transform));
@@ -224,8 +241,13 @@ void Render::update_skybox() {
 
 	glBindVertexArray(meshes_get(surfaces_get(skybox).mesh).vao);
 
-	static GLuint irradianceShader = load_shader_program(
-		{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/irradiance.frag", GL_FRAGMENT_SHADER}});
+	static GLuint irradianceShader = load_spirv_program(
+		{{
+#include "shaders/skybox.vert"
+			 , GL_VERTEX_SHADER},
+		 {
+#include "shaders/irradiance.frag"
+			 , GL_FRAGMENT_SHADER}});
 	glUseProgram(irradianceShader);
 	glBindTextures(1, 1, &skyboxCubemap);
 
@@ -243,8 +265,13 @@ void Render::update_skybox() {
 		glDrawElements(GL_TRIANGLES, meshes_get(surfaces_get(skybox).mesh).count, GL_UNSIGNED_INT, 0);
 	}
 
-	static GLuint reflectionShader = load_shader_program(
-		{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/reflection.frag", GL_FRAGMENT_SHADER}});
+	static GLuint reflectionShader = load_spirv_program(
+		{{
+#include "shaders/skybox.vert"
+			 , GL_VERTEX_SHADER},
+		 {
+#include "shaders/reflection.frag"
+			 , GL_FRAGMENT_SHADER}});
 	glUseProgram(reflectionShader);
 	glBindTextures(1, 1, &skyboxCubemap);
 
@@ -275,11 +302,22 @@ void Render::update_skybox() {
 
 void Render::set_skybox_rect_texture(TextureHandle texture, bool update) {
 	static ShaderHandle skyboxShader = shaders_insert(Shader{
-		load_shader_program(
-			{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/rectSkybox.frag", GL_FRAGMENT_SHADER}}),
+		load_spirv_program(
+			{{
+#include "shaders/skybox.vert"
+				 , GL_VERTEX_SHADER},
+			 {
+#include "shaders/rectSkybox.frag"
+				 , GL_FRAGMENT_SHADER}}),
 		Shader::Type::Skybox});
 	static ShaderHandle skyboxDepthShader = shaders_insert(Shader{
-		load_shader_program({{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/depth.frag", GL_FRAGMENT_SHADER}}),
+		load_spirv_program(
+			{{
+#include "shaders/skybox.vert"
+				 , GL_VERTEX_SHADER},
+			 {
+#include "shaders/depth.frag"
+				 , GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth});
 	static MaterialHandle skyboxMaterial = materials_insert(Material{
 		{{.shader = skyboxShader, .uniform = 0, .textures = {texture}},
@@ -290,11 +328,22 @@ void Render::set_skybox_rect_texture(TextureHandle texture, bool update) {
 
 void Render::set_skybox_cube_texture(TextureHandle texture, bool update) {
 	static ShaderHandle skyboxShader = shaders_insert(Shader{
-		load_shader_program(
-			{{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/cubeSkybox.frag", GL_FRAGMENT_SHADER}}),
+		load_spirv_program(
+			{{
+#include "shaders/skybox.vert"
+				 , GL_VERTEX_SHADER},
+			 {
+#include "shaders/cubeSkybox.frag"
+				 , GL_FRAGMENT_SHADER}}),
 		Shader::Type::Skybox});
 	static ShaderHandle skyboxDepthShader = shaders_insert(Shader{
-		load_shader_program({{"shaders/skybox.vert", GL_VERTEX_SHADER}, {"shaders/depth.frag", GL_FRAGMENT_SHADER}}),
+		load_spirv_program(
+			{{
+#include "shaders/skybox.vert"
+				 , GL_VERTEX_SHADER},
+			 {
+#include "shaders/depth.frag"
+				 , GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth});
 	static MaterialHandle skyboxMaterial = materials_insert(Material{
 		{{.shader = skyboxShader, .uniform = 0, .textures = {texture}},

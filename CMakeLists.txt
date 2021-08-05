@@ -18,8 +18,7 @@ else()
 endif()
 
 include(lib/lib.cmake)
-target_link_libraries(marble libs)
+include(shaders.cmake)
+target_link_libraries(marble libs shaders)
 
-install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/shaders DESTINATION .)
 install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/assets DESTINATION .)
-

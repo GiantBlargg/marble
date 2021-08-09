@@ -65,6 +65,13 @@ using namespace glm;
 	  public:                                                                                                          \
 		T##Handle(const T##Handle& src) : T##Handle(src.handle, src.render) {}                                         \
 		~T##Handle() { render->name##_unref(handle); }                                                                 \
+		T##Handle& operator=(const T##Handle& src) {                                                                   \
+			render->name##_unref(handle);                                                                              \
+			handle = src.handle;                                                                                       \
+			render = src.render;                                                                                       \
+			render->name##_ref(handle);                                                                                \
+			return *this;                                                                                              \
+		}                                                                                                              \
 	};                                                                                                                 \
                                                                                                                        \
   protected:                                                                                                           \

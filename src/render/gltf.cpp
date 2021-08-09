@@ -353,6 +353,8 @@ struct Gltf {
 				std::optional<uint64_t> tangent;
 				std::vector<uint64_t> texcoord;
 				std::vector<uint64_t> color;
+				std::vector<uint64_t> joints;
+				std::vector<uint64_t> weights;
 
 				friend void from_json(const json& j, Attributes& attributes) {
 					for (auto& [key, val] : j.items()) {
@@ -525,6 +527,31 @@ struct Gltf {
 	}
 };
 
+Render::StandardMesh::Accessor
+convert_accessor(const Gltf& gltf, const std::vector<BufferHandle>& buffer_handles, const uint64_t accessor_index) {
+	static const std::unordered_map<Gltf::Accessor::Type, int> element_size = {
+		{Gltf::Accessor::Type::SCALAR, 1}, {Gltf::Accessor::Type::VEC2, 2}, {Gltf::Accessor::Type::VEC3, 3},
+		{Gltf::Accessor::Type::VEC4, 4},   {Gltf::Accessor::Type::MAT2, 4}, {Gltf::Accessor::Type::MAT3, 9},
+		{Gltf::Accessor::Type::MAT4, 16}};
+	static const std::unordered_map<Gltf::ComponentType, int> type_size = {
+		{Gltf::ComponentType::BYTE, 1},  {Gltf::ComponentType::UNSIGNED_BYTE, 1},
+		{Gltf::ComponentType::SHORT, 2}, {Gltf::ComponentType::UNSIGNED_SHORT, 2},
+		{Gltf::ComponentType::INT, 4},   {Gltf::ComponentType::UNSIGNED_INT, 4},
+		{Gltf::ComponentType::FLOAT, 4}};
+
+	const Gltf::Accessor& accessor = gltf.accessors[accessor_index];
+	const Gltf::BufferView& buffer_view = gltf.bufferViews[accessor.bufferView.value()];
+	const BufferHandle& buffer = buffer_handles[buffer_view.buffer];
+	const uint64_t stride =
+		buffer_view.byteStride.value_or(element_size.at(accessor.type) * type_size.at(accessor.componentType));
+
+	return Render::StandardMesh::Accessor{
+		.buffer = buffer,
+		.bufferOffset = buffer_view.byteOffset,
+		.stride = stride,
+		.relativeOffset = accessor.byteOffset};
+}
+
 Model load_gltf(std::filesystem::path path, Render& render) {
 	std::ifstream gltf_file(path);
 	json j = json::parse(gltf_file);
@@ -551,47 +578,24 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 	models.resize(gltf.meshes.size());
 	for (size_t i = 0; i < models.size(); i++) {
 		models[i].reserve(gltf.meshes[i].primitives.size());
-		for (size_t j = 0; j < gltf.meshes[i].primitives.size(); j++) {
-			auto& prim = gltf.meshes[i].primitives[j];
-			Core::MeshDef def;
+		for (auto& prim : gltf.meshes[i].primitives) {
+			if (!prim.attributes.position.has_value())
+				continue;
+			int count = static_cast<int>(gltf.accessors[prim.indices.value_or(prim.attributes.position.value())].count);
+			Render::StandardMesh mesh{
+				.position = convert_accessor(gltf, buffer_handles, prim.attributes.position.value()), .count = count};
+			if (prim.attributes.normal.has_value())
+				mesh.normal = convert_accessor(gltf, buffer_handles, prim.attributes.normal.value());
+			if (prim.attributes.tangent.has_value())
+				mesh.tangent = convert_accessor(gltf, buffer_handles, prim.attributes.tangent.value());
+			mesh.texcoord.reserve(prim.attributes.texcoord.size());
+			for (auto accessor : prim.attributes.texcoord)
+				mesh.texcoord.push_back(convert_accessor(gltf, buffer_handles, accessor));
+			for (auto accessor : prim.attributes.color)
+				mesh.color.push_back(convert_accessor(gltf, buffer_handles, accessor));
 
-			auto& accessor = gltf.accessors[prim.attributes.position.value()];
-			auto& buffer_view = gltf.bufferViews[accessor.bufferView.value()];
-			def.count = accessor.count;
-
-			static std::unordered_map<Gltf::Accessor::Type, int> element_count = {
-				{Gltf::Accessor::Type::SCALAR, 1}, {Gltf::Accessor::Type::VEC2, 2}, {Gltf::Accessor::Type::VEC3, 3},
-				{Gltf::Accessor::Type::VEC4, 4},   {Gltf::Accessor::Type::MAT2, 4}, {Gltf::Accessor::Type::MAT3, 9},
-				{Gltf::Accessor::Type::MAT4, 16}};
-			static std::unordered_map<Gltf::ComponentType, int> type_size = {
-				{Gltf::ComponentType::BYTE, 1},  {Gltf::ComponentType::UNSIGNED_BYTE, 1},
-				{Gltf::ComponentType::SHORT, 2}, {Gltf::ComponentType::UNSIGNED_SHORT, 2},
-				{Gltf::ComponentType::INT, 4},   {Gltf::ComponentType::UNSIGNED_INT, 4},
-				{Gltf::ComponentType::FLOAT, 4},
-			};
-
-			def.bindings[0] = Core::MeshDef::Binding{
-				.buffer = buffer_handles[buffer_view.buffer],
-				.offset = buffer_view.byteOffset,
-				.stride = buffer_view.byteStride.value_or(
-					element_count.at(accessor.type) * type_size.at(accessor.componentType))};
-
-			static std::unordered_map<Gltf::ComponentType, Render::MeshDef::Accessor::Type> type_convert = {
-				{Gltf::ComponentType::BYTE, Render::MeshDef::Accessor::Type::BYTE},
-				{Gltf::ComponentType::UNSIGNED_BYTE, Render::MeshDef::Accessor::Type::UNSIGNED_BYTE},
-				{Gltf::ComponentType::SHORT, Render::MeshDef::Accessor::Type::SHORT},
-				{Gltf::ComponentType::UNSIGNED_SHORT, Render::MeshDef::Accessor::Type::UNSIGNED_SHORT},
-				{Gltf::ComponentType::INT, Render::MeshDef::Accessor::Type::INT},
-				{Gltf::ComponentType::UNSIGNED_INT, Render::MeshDef::Accessor::Type::UNSIGNED_INT},
-				{Gltf::ComponentType::FLOAT, Render::MeshDef::Accessor::Type::FLOAT}};
-			def.attributes[0] = Core::MeshDef::Accessor{
-				.binding = 0,
-				.normalized = accessor.normalized,
-				.count = element_count.at(accessor.type),
-				.type = type_convert.at(accessor.componentType),
-				.relativeOffset = accessor.byteOffset};
-
-			models[i].push_back(Model::Surface{.mesh = render.mesh_create(def), .material = default_material});
+			models[i].push_back(
+				Model::Surface{.mesh = render.standard_mesh_create(mesh), .material = default_material});
 		}
 	}
 

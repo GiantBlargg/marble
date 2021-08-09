@@ -297,4 +297,34 @@ void Render::set_skybox_cube_texture(TextureHandle texture, bool update) {
 	set_skybox_material(skyboxMaterial, update);
 }
 
+MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
+	std::array<std::optional<StandardMesh::Accessor>, 16> standard_accessors;
+	standard_accessors[0] = mesh.position;
+	standard_accessors[1] = mesh.normal;
+	if (mesh.texcoord.size() > 0)
+		standard_accessors[2] = mesh.texcoord[0];
+
+	std::array<std::optional<MeshDef::Binding>, 16> mesh_def_bindings;
+	std::array<std::optional<MeshDef::Accessor>, 16> mesh_def_accessors;
+
+	static const std::array<int, 16> accessor_size = {3, 3, 2};
+	static const std::array<MeshDef::Accessor::Type, 16> accessor_type = {
+		MeshDef::Accessor::Type::FLOAT, MeshDef::Accessor::Type::FLOAT, MeshDef::Accessor::Type::FLOAT};
+
+	for (uint32_t i = 0; i < standard_accessors.size(); i++) {
+		if (!standard_accessors[i].has_value())
+			continue;
+		auto& accessor = standard_accessors[i].value();
+		mesh_def_bindings[i] =
+			MeshDef::Binding{.buffer = accessor.buffer, .offset = accessor.bufferOffset, .stride = accessor.stride};
+		mesh_def_accessors[i] = MeshDef::Accessor{
+			.binding = i,
+			.size = accessor_size.at(i),
+			.type = accessor_type.at(i),
+			.relativeOffset = accessor.relativeOffset};
+	}
+
+	return mesh_create(MeshDef{.bindings = mesh_def_bindings, .attributes = mesh_def_accessors, .count = mesh.count});
+}
+
 } // namespace Render

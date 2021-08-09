@@ -45,5 +45,23 @@ class Render : public Core {
 	void set_skybox_cube_texture(TextureHandle, bool update = true);
 
 	void update_skybox();
+
+	struct StandardMesh {
+		struct Accessor {
+			BufferHandle buffer;
+			uint64_t bufferOffset = 0;
+			uint64_t stride;
+			uint64_t relativeOffset = 0;
+		};
+		Accessor position;
+		std::optional<Accessor> normal;
+		std::optional<Accessor> tangent;
+		std::vector<Accessor> texcoord;
+		std::vector<Accessor> color;
+
+		std::optional<Accessor> indicies;
+		int32_t count;
+	};
+	MeshHandle standard_mesh_create(StandardMesh);
 };
 } // namespace Render

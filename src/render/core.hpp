@@ -210,9 +210,9 @@ class Core {
 		};
 		std::array<std::optional<Binding>, 16> bindings;
 		struct Accessor {
-			uint8_t binding;
+			uint32_t binding;
 			bool normalized = false;
-			int count; // Per item
+			int size;
 			enum class Type { BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT };
 			Type type;
 			uint64_t relativeOffset = 0;

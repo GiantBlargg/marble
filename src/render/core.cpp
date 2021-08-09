@@ -66,7 +66,7 @@ MeshHandle Core::mesh_create(MeshDef def) {
 
 			glEnableVertexArrayAttrib(vertex_array, i);
 			glVertexArrayAttribFormat(
-				vertex_array, i, attrib.count, get_format(attrib.type), attrib.normalized, attrib.relativeOffset);
+				vertex_array, i, attrib.size, get_format(attrib.type), attrib.normalized, attrib.relativeOffset);
 			glVertexArrayAttribBinding(vertex_array, i, attrib.binding);
 		}
 	}
@@ -77,32 +77,6 @@ MeshHandle Core::mesh_create(MeshDef def) {
 	return meshes_insert(
 		Mesh{.vao = vertex_array, .count = def.count, .buffers = buffers, .indexed = def.indicies.has_value()});
 }
-
-// MeshHandle Core::create_mesh(MeshDef def) {
-
-// 	GLuint vertex_buffer, index_buffer, vao;
-// 	glCreateBuffers(1, &vertex_buffer);
-// 	glCreateBuffers(1, &index_buffer);
-// 	glCreateVertexArrays(1, &vao);
-
-// 	glNamedBufferStorage(vertex_buffer, vector_size(def.verticies), def.verticies.data(), 0);
-// 	glNamedBufferStorage(index_buffer, vector_size(def.indicies), def.indicies.data(), 0);
-
-// 	glVertexArrayVertexBuffer(vao, 0, vertex_buffer, 0, sizeof(MeshDef::Vertex));
-// 	glEnableVertexArrayAttrib(vao, 0);
-// 	glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, false, offsetof(MeshDef::Vertex, pos));
-// 	glVertexArrayVertexBuffer(vao, 1, vertex_buffer, 0, sizeof(MeshDef::Vertex));
-// 	glEnableVertexArrayAttrib(vao, 1);
-// 	glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, false, offsetof(MeshDef::Vertex, normal));
-// 	glVertexArrayVertexBuffer(vao, 2, vertex_buffer, 0, sizeof(MeshDef::Vertex));
-// 	glEnableVertexArrayAttrib(vao, 2);
-// 	glVertexArrayAttribFormat(vao, 2, 2, GL_FLOAT, false, offsetof(MeshDef::Vertex, uv));
-
-// 	glVertexArrayElementBuffer(vao, index_buffer);
-
-// 	return meshes_insert(
-// 		Mesh{.vao = vao, .count = static_cast<uint>(def.indicies.size()), .buffers = {vertex_buffer, index_buffer}});
-// }
 
 void Core::shaders_setup(size_t) {}
 void Core::shaders_cleanup(size_t handle) {

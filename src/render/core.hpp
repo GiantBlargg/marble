@@ -186,49 +186,12 @@ class Core {
 	// Begin Resources
 
   protected:
-	struct Buffer {
-		GLuint buffer;
-	};
-	RESOURCE_CONTAINER(Buffer, buffers, Core)
-  protected:
-	BufferHandle buffer_create(GLsizeiptr size, const void* data);
-
-  public:
-	std::vector<BufferHandle> buffers_create(std::vector<std::vector<uint8_t>>);
-	template <class T> BufferHandle buffer_create(std::vector<T> data) {
-		return buffer_create(sizeof(T) * data.size(), data.data());
-	}
-
-  protected:
 	struct Mesh {
 		GLuint vao;
 		GLsizei count;
-		std::vector<BufferHandle> buffers;
-		bool indexed = true;
+		std::vector<GLuint> buffers;
 	};
 	RESOURCE_CONTAINER(Mesh, meshes, Core)
-
-  public:
-	struct MeshDef {
-		struct Binding {
-			BufferHandle buffer;
-			uint64_t offset = 0;
-			uint64_t stride;
-		};
-		std::array<std::optional<Binding>, 16> bindings;
-		struct Accessor {
-			uint32_t binding;
-			bool normalized = false;
-			int size;
-			enum class Type { BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT };
-			Type type;
-			uint64_t relativeOffset = 0;
-		};
-		std::array<std::optional<Accessor>, 16> attributes;
-		std::optional<BufferHandle> indicies;
-		int32_t count;
-	};
-	MeshHandle mesh_create(MeshDef);
 
   protected:
 	struct Shader {
@@ -358,7 +321,6 @@ class Core {
 	void run();
 };
 
-typedef Core::BufferHandle BufferHandle;
 typedef Core::MeshHandle MeshHandle;
 typedef Core::ShaderHandle ShaderHandle;
 typedef Core::MaterialHandle MaterialHandle;

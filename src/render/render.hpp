@@ -46,22 +46,30 @@ class Render : public Core {
 
 	void update_skybox();
 
-	struct StandardMesh {
-		struct Accessor {
-			BufferHandle buffer;
-			uint64_t bufferOffset = 0;
-			uint64_t stride;
-			uint64_t relativeOffset = 0;
-		};
-		Accessor position;
-		std::optional<Accessor> normal;
-		std::optional<Accessor> tangent;
-		std::vector<Accessor> texcoord;
-		std::vector<Accessor> color;
+	class StandardMesh {
+	  private:
+		friend class Render;
+		std::vector<float> vertex_data;
+		bool normal, tangent;
+		size_t vertex_count;
+		size_t tex_coord_count, colour_count;
+		size_t stride;
 
-		std::optional<Accessor> indicies;
-		int32_t count;
+	  public:
+		StandardMesh() : StandardMesh(0, false, false, 0, 0){};
+		StandardMesh(
+			size_t vertex_count, bool has_normal, bool has_tangent, size_t tex_coord_count, size_t colour_count) {
+			resize(vertex_count, has_normal, has_tangent, tex_coord_count, colour_count);
+		}
+		void resize(size_t vertex, bool has_normal, bool has_tangent, size_t tex_coord, size_t colour);
+		// Data is zeroed after resize
+
+		void set_position(int vertex, vec3 value);
+
+		std::vector<uint32_t> indices;
 	};
-	MeshHandle standard_mesh_create(StandardMesh);
+
+	MeshHandle standard_mesh_create(StandardMesh mesh);
 };
+
 } // namespace Render

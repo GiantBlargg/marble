@@ -78,7 +78,7 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 		ShaderHandle skyboxShader = shaders_insert(Shader{
 			load_spirv_program(
 				{{Shaders::skybox_vert, GL_VERTEX_SHADER}, {Shaders::test_skybox_frag, GL_FRAGMENT_SHADER}}),
-			Shader::Type::Skybox});
+			Shader::Type::Opaque | Shader::Type::Skybox});
 		MaterialHandle skyboxMaterial =
 			materials_insert(Material{{{.shader = skyboxShader, .uniform = 0, .textures = {}}}});
 
@@ -97,20 +97,22 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 	};
 		// clang-format on
 
-		GLuint vao;
+		GLuint vertex_buffer, index_buffer, vao;
+		glCreateBuffers(1, &vertex_buffer);
+		glCreateBuffers(1, &index_buffer);
 		glCreateVertexArrays(1, &vao);
 
-		BufferHandle vertex_handle(buffer_create(verticies));
-		BufferHandle index_handle(buffer_create(indicies));
+		glNamedBufferStorage(vertex_buffer, vector_size(verticies), verticies.data(), 0);
+		glNamedBufferStorage(index_buffer, vector_size(indicies), indicies.data(), 0);
 
-		glVertexArrayVertexBuffer(vao, 0, buffers_get(vertex_handle).buffer, 0, sizeof(vec3));
+		glVertexArrayVertexBuffer(vao, 0, vertex_buffer, 0, sizeof(vec3));
 		glEnableVertexArrayAttrib(vao, 0);
 		glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, false, 0);
 
-		glVertexArrayElementBuffer(vao, buffers_get(index_handle).buffer);
+		glVertexArrayElementBuffer(vao, index_buffer);
 
 		MeshHandle skyboxMesh = meshes_insert(
-			Mesh{.vao = vao, .count = static_cast<int32_t>(indicies.size()), .buffers = {vertex_handle, index_handle}});
+			Mesh{.vao = vao, .count = static_cast<int32_t>(indicies.size()), .buffers = {vertex_buffer, index_buffer}});
 		skybox = surface_create(skyboxMesh, skyboxMaterial);
 	}
 
@@ -272,7 +274,7 @@ void Render::update_skybox() {
 void Render::set_skybox_rect_texture(TextureHandle texture, bool update) {
 	static ShaderHandle skyboxShader = shaders_insert(Shader{
 		load_spirv_program({{Shaders::skybox_vert, GL_VERTEX_SHADER}, {Shaders::rect_skybox_frag, GL_FRAGMENT_SHADER}}),
-		Shader::Type::Skybox});
+		Shader::Type::Opaque | Shader::Type::Skybox});
 	static ShaderHandle skyboxDepthShader = shaders_insert(Shader{
 		load_spirv_program({{Shaders::skybox_vert, GL_VERTEX_SHADER}, {Shaders::depth_frag, GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth});
@@ -286,7 +288,7 @@ void Render::set_skybox_rect_texture(TextureHandle texture, bool update) {
 void Render::set_skybox_cube_texture(TextureHandle texture, bool update) {
 	static ShaderHandle skyboxShader = shaders_insert(Shader{
 		load_spirv_program({{Shaders::skybox_vert, GL_VERTEX_SHADER}, {Shaders::cube_skybox_frag, GL_FRAGMENT_SHADER}}),
-		Shader::Type::Skybox});
+		Shader::Type::Opaque | Shader::Type::Skybox});
 	static ShaderHandle skyboxDepthShader = shaders_insert(Shader{
 		load_spirv_program({{Shaders::skybox_vert, GL_VERTEX_SHADER}, {Shaders::depth_frag, GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth});
@@ -297,34 +299,81 @@ void Render::set_skybox_cube_texture(TextureHandle texture, bool update) {
 	set_skybox_material(skyboxMaterial, update);
 }
 
+void Render::StandardMesh::resize(size_t vertex, bool has_normal, bool has_tangent, size_t tex_coord, size_t colour) {
+	vertex_count = vertex;
+	normal = has_normal;
+	tangent = has_tangent;
+	tex_coord_count = tex_coord;
+	colour_count = colour;
+	stride = 3 + 3 + 4 + 2 * tex_coord_count + 4 * colour_count;
+
+	vertex_data.clear();
+	vertex_data.resize(stride * vertex_count);
+}
+
+void Render::StandardMesh::set_position(int vertex, vec3 value) {
+	*reinterpret_cast<vec3*>(vertex_data.data() + stride * vertex) = value;
+}
+
+const std::unordered_map<GLenum, int> type_size = {
+	{GL_BYTE, 1}, {GL_UNSIGNED_BYTE, 1}, {GL_SHORT, 2}, {GL_UNSIGNED_SHORT, 2},
+	{GL_INT, 4},  {GL_UNSIGNED_INT, 4},  {GL_FLOAT, 4},
+};
+
+#define VERTEX_ATTRIB(attribindex, size, type, normalized)                                                             \
+	glEnableVertexArrayAttrib(vao, attribindex);                                                                       \
+	glVertexArrayAttribFormat(vao, attribindex, size, type, normalized, offset);                                       \
+	glVertexArrayAttribBinding(vao, attribindex, 0);                                                                   \
+	offset += size * type_size.at(type);
+
 MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
-	std::array<std::optional<StandardMesh::Accessor>, 16> standard_accessors;
-	standard_accessors[0] = mesh.position;
-	standard_accessors[1] = mesh.normal;
-	if (mesh.texcoord.size() > 0)
-		standard_accessors[2] = mesh.texcoord[0];
 
-	std::array<std::optional<MeshDef::Binding>, 16> mesh_def_bindings;
-	std::array<std::optional<MeshDef::Accessor>, 16> mesh_def_accessors;
+	// TODO: Calculate normals, tangents
 
-	static const std::array<int, 16> accessor_size = {3, 3, 2};
-	static const std::array<MeshDef::Accessor::Type, 16> accessor_type = {
-		MeshDef::Accessor::Type::FLOAT, MeshDef::Accessor::Type::FLOAT, MeshDef::Accessor::Type::FLOAT};
-
-	for (uint32_t i = 0; i < standard_accessors.size(); i++) {
-		if (!standard_accessors[i].has_value())
-			continue;
-		auto& accessor = standard_accessors[i].value();
-		mesh_def_bindings[i] =
-			MeshDef::Binding{.buffer = accessor.buffer, .offset = accessor.bufferOffset, .stride = accessor.stride};
-		mesh_def_accessors[i] = MeshDef::Accessor{
-			.binding = i,
-			.size = accessor_size.at(i),
-			.type = accessor_type.at(i),
-			.relativeOffset = accessor.relativeOffset};
+	if (mesh.indices.size() == 0) {
+		mesh.indices.resize(mesh.vertex_count);
+		for (size_t i = 0; i < mesh.vertex_count; i++) {
+			mesh.indices[i] = i;
+		}
 	}
 
-	return mesh_create(MeshDef{.bindings = mesh_def_bindings, .attributes = mesh_def_accessors, .count = mesh.count});
+	GLuint vertex_buffer, index_buffer, vao;
+	glCreateBuffers(1, &vertex_buffer);
+	glCreateBuffers(1, &index_buffer);
+	glCreateVertexArrays(1, &vao);
+
+	glNamedBufferStorage(vertex_buffer, mesh.vertex_data.size() * sizeof(float), mesh.vertex_data.data(), 0);
+	glNamedBufferStorage(index_buffer, mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), 0);
+	glVertexArrayElementBuffer(vao, index_buffer);
+
+	glVertexArrayVertexBuffer(vao, 0, vertex_buffer, 0, mesh.stride * sizeof(float));
+
+	int offset = 0;
+
+	VERTEX_ATTRIB(0, 3, GL_FLOAT, false) // Position
+	VERTEX_ATTRIB(1, 3, GL_FLOAT, false) // Normal
+	VERTEX_ATTRIB(2, 4, GL_FLOAT, false) // Tangent
+	if (mesh.tex_coord_count > 0) {
+		VERTEX_ATTRIB(3, 2, GL_FLOAT, false)
+		if (mesh.tex_coord_count > 1) {
+			VERTEX_ATTRIB(4, 2, GL_FLOAT, false)
+			if (mesh.tex_coord_count > 2) {
+				VERTEX_ATTRIB(5, 2, GL_FLOAT, false)
+				if (mesh.tex_coord_count > 3) {
+					VERTEX_ATTRIB(6, 2, GL_FLOAT, false)
+				}
+			}
+		}
+	}
+	if (mesh.colour_count > 0) {
+		VERTEX_ATTRIB(7, 4, GL_FLOAT, false)
+		if (mesh.colour_count > 1) {
+			VERTEX_ATTRIB(8, 4, GL_FLOAT, false)
+		}
+	}
+
+	return meshes_insert(
+		Mesh{.vao = vao, .count = static_cast<int>(mesh.indices.size()), .buffers = {vertex_buffer, index_buffer}});
 }
 
 } // namespace Render

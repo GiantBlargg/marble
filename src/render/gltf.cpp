@@ -527,8 +527,13 @@ struct Gltf {
 	}
 };
 
-Render::StandardMesh::Accessor
-convert_accessor(const Gltf& gltf, const std::vector<BufferHandle>& buffer_handles, const uint64_t accessor_index) {
+void accessor_for_each(
+	const Gltf& gltf, const std::vector<std::vector<uint8_t>> buffers_data, size_t accessor_index,
+	std::function<void(const Gltf::Accessor&, size_t index, const uint8_t* data)> functor) {
+	const Gltf::Accessor& accessor = gltf.accessors[accessor_index];
+	const Gltf::BufferView& bufferView = gltf.bufferViews[accessor.bufferView.value()];
+	const std::vector<uint8_t>& buffer = buffers_data.at(bufferView.buffer);
+
 	static const std::unordered_map<Gltf::Accessor::Type, int> element_size = {
 		{Gltf::Accessor::Type::SCALAR, 1}, {Gltf::Accessor::Type::VEC2, 2}, {Gltf::Accessor::Type::VEC3, 3},
 		{Gltf::Accessor::Type::VEC4, 4},   {Gltf::Accessor::Type::MAT2, 4}, {Gltf::Accessor::Type::MAT3, 9},
@@ -538,18 +543,14 @@ convert_accessor(const Gltf& gltf, const std::vector<BufferHandle>& buffer_handl
 		{Gltf::ComponentType::SHORT, 2}, {Gltf::ComponentType::UNSIGNED_SHORT, 2},
 		{Gltf::ComponentType::INT, 4},   {Gltf::ComponentType::UNSIGNED_INT, 4},
 		{Gltf::ComponentType::FLOAT, 4}};
-
-	const Gltf::Accessor& accessor = gltf.accessors[accessor_index];
-	const Gltf::BufferView& buffer_view = gltf.bufferViews[accessor.bufferView.value()];
-	const BufferHandle& buffer = buffer_handles[buffer_view.buffer];
 	const uint64_t stride =
-		buffer_view.byteStride.value_or(element_size.at(accessor.type) * type_size.at(accessor.componentType));
+		bufferView.byteStride.value_or(element_size.at(accessor.type) * type_size.at(accessor.componentType));
 
-	return Render::StandardMesh::Accessor{
-		.buffer = buffer,
-		.bufferOffset = buffer_view.byteOffset,
-		.stride = stride,
-		.relativeOffset = accessor.byteOffset};
+	for (size_t i = 0; i < accessor.count; i++) {
+		size_t offset = bufferView.byteOffset + stride * i + accessor.byteOffset;
+		const uint8_t* ptr = buffer.data() + offset;
+		functor(accessor, i, ptr);
+	}
 }
 
 Model load_gltf(std::filesystem::path path, Render& render) {
@@ -570,8 +571,6 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 		buf.read(reinterpret_cast<char*>(buffers_data[i].data()), buffers_data[i].size());
 	}
 
-	std::vector<BufferHandle> buffer_handles = render.buffers_create(buffers_data);
-
 	MaterialHandle default_material = render.create_pbr_material(MaterialPBR{.albedoFactor = vec4(1.0f)});
 
 	std::vector<std::vector<Model::Surface>> models;
@@ -581,18 +580,22 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 		for (auto& prim : gltf.meshes[i].primitives) {
 			if (!prim.attributes.position.has_value())
 				continue;
-			int count = static_cast<int>(gltf.accessors[prim.indices.value_or(prim.attributes.position.value())].count);
-			Render::StandardMesh mesh{
-				.position = convert_accessor(gltf, buffer_handles, prim.attributes.position.value()), .count = count};
-			if (prim.attributes.normal.has_value())
-				mesh.normal = convert_accessor(gltf, buffer_handles, prim.attributes.normal.value());
-			if (prim.attributes.tangent.has_value())
-				mesh.tangent = convert_accessor(gltf, buffer_handles, prim.attributes.tangent.value());
-			mesh.texcoord.reserve(prim.attributes.texcoord.size());
-			for (auto accessor : prim.attributes.texcoord)
-				mesh.texcoord.push_back(convert_accessor(gltf, buffer_handles, accessor));
-			for (auto accessor : prim.attributes.color)
-				mesh.color.push_back(convert_accessor(gltf, buffer_handles, accessor));
+			size_t count = gltf.accessors[prim.attributes.position.value()].count;
+			bool has_normal = prim.attributes.normal.has_value();
+			bool has_tangent = prim.attributes.tangent.has_value();
+			Render::StandardMesh mesh(
+				count, has_normal, has_tangent, prim.attributes.texcoord.size(), prim.attributes.color.size());
+
+			{
+				accessor_for_each(
+					gltf, buffers_data, prim.attributes.position.value(),
+					[&mesh](const Gltf::Accessor& accessor, size_t vertex, const uint8_t* data) {
+						assert(accessor.type == Gltf::Accessor::Type::VEC3);
+						assert(accessor.componentType == Gltf::ComponentType::FLOAT);
+						glm::vec3 value = *reinterpret_cast<const glm::vec3*>(data);
+						mesh.set_position(vertex, value);
+					});
+			}
 
 			models[i].push_back(
 				Model::Surface{.mesh = render.standard_mesh_create(mesh), .material = default_material});

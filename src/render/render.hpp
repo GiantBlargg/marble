@@ -50,7 +50,7 @@ class Render : public Core {
 	  private:
 		friend class Render;
 		std::vector<float> vertex_data;
-		bool normal, tangent;
+		bool has_normal, has_tangent;
 		size_t vertex_count;
 		size_t tex_coord_count, colour_count;
 		size_t stride;
@@ -64,7 +64,14 @@ class Render : public Core {
 		void resize(size_t vertex, bool has_normal, bool has_tangent, size_t tex_coord, size_t colour);
 		// Data is zeroed after resize
 
-		void set_position(int vertex, vec3 value);
+		vec3& position(int vertex) {
+			size_t offset = stride * vertex;
+			return *reinterpret_cast<vec3*>(vertex_data.data() + offset);
+		}
+		vec3& normal(int vertex) {
+			size_t offset = stride * vertex + 3;
+			return *reinterpret_cast<vec3*>(vertex_data.data() + offset);
+		}
 
 		std::vector<uint32_t> indices;
 	};

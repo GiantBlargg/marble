@@ -299,20 +299,16 @@ void Render::set_skybox_cube_texture(TextureHandle texture, bool update) {
 	set_skybox_material(skyboxMaterial, update);
 }
 
-void Render::StandardMesh::resize(size_t vertex, bool has_normal, bool has_tangent, size_t tex_coord, size_t colour) {
+void Render::StandardMesh::resize(size_t vertex, bool normal, bool tangent, size_t tex_coord, size_t colour) {
 	vertex_count = vertex;
-	normal = has_normal;
-	tangent = has_tangent;
+	has_normal = normal;
+	has_tangent = tangent;
 	tex_coord_count = tex_coord;
 	colour_count = colour;
 	stride = 3 + 3 + 4 + 2 * tex_coord_count + 4 * colour_count;
 
 	vertex_data.clear();
 	vertex_data.resize(stride * vertex_count);
-}
-
-void Render::StandardMesh::set_position(int vertex, vec3 value) {
-	*reinterpret_cast<vec3*>(vertex_data.data() + stride * vertex) = value;
 }
 
 const std::unordered_map<GLenum, int> type_size = {
@@ -327,10 +323,22 @@ const std::unordered_map<GLenum, int> type_size = {
 	offset += size * type_size.at(type);
 
 MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
-
-	// TODO: Calculate normals, tangents
+	if (!mesh.has_normal) {
+		size_t triangle_count = mesh.vertex_count / 3;
+		for (size_t triangle = 0; triangle < triangle_count; triangle++) {
+			vec3& v1 = mesh.position(triangle * 3);
+			vec3& v2 = mesh.position(triangle * 3 + 1);
+			vec3& v3 = mesh.position(triangle * 3 + 2);
+			vec3 normal = normalize(cross(v2 - v1, v3 - v1));
+			mesh.normal(triangle * 3) = normal;
+			mesh.normal(triangle * 3 + 1) = normal;
+			mesh.normal(triangle * 3 + 2) = normal;
+		}
+	}
+	// TODO: Calculate tangents
 
 	if (mesh.indices.size() == 0) {
+		// TODO: Proper welding
 		mesh.indices.resize(mesh.vertex_count);
 		for (size_t i = 0; i < mesh.vertex_count; i++) {
 			mesh.indices[i] = i;

@@ -593,7 +593,7 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 						assert(accessor.type == Gltf::Accessor::Type::VEC3);
 						assert(accessor.componentType == Gltf::ComponentType::FLOAT);
 						glm::vec3 value = *reinterpret_cast<const glm::vec3*>(data);
-						mesh.set_position(vertex, value);
+						mesh.position(vertex) = value;
 					});
 			}
 

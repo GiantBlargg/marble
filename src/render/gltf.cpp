@@ -320,7 +320,7 @@ struct Gltf {
 		};
 		std::optional<OcclusionTextureInfo> occlusionTexture;
 		std::optional<TextureInfo> emissiveTexture;
-		std::array<std::string, 3> emissiveFactor = {0, 0, 0};
+		std::array<double, 3> emissiveFactor = {0, 0, 0};
 		enum class AlphaMode {
 			OPAQUE,
 			MASK,
@@ -635,15 +635,31 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 			bool has_tangent = prim.attributes.tangent.has_value();
 			Render::StandardMesh mesh(
 				count, has_normal, has_tangent, prim.attributes.texcoord.size(), prim.attributes.color.size());
+			accessor_for_each(
+				gltf, buffers_data, prim.attributes.position.value(),
+				[&mesh](const Gltf::Accessor& accessor, size_t vertex, const uint8_t* data) {
+					glm::vec3 value = *reinterpret_cast<const glm::vec3*>(data);
+					mesh.position(vertex) = value;
+				});
 
-			{
+			if (prim.indices.has_value()) {
+				mesh.indices.resize(gltf.accessors[prim.indices.value()].count);
 				accessor_for_each(
-					gltf, buffers_data, prim.attributes.position.value(),
-					[&mesh](const Gltf::Accessor& accessor, size_t vertex, const uint8_t* data) {
-						assert(accessor.type == Gltf::Accessor::Type::VEC3);
-						assert(accessor.componentType == Gltf::ComponentType::FLOAT);
-						glm::vec3 value = *reinterpret_cast<const glm::vec3*>(data);
-						mesh.position(vertex) = value;
+					gltf, buffers_data, prim.indices.value(),
+					[&mesh](const Gltf::Accessor& accessor, size_t index, const uint8_t* data) {
+						uint32_t value;
+						switch (accessor.componentType) {
+						case Gltf::ComponentType::UNSIGNED_BYTE:
+							value = static_cast<uint32_t>(*data);
+							break;
+						case Gltf::ComponentType::UNSIGNED_SHORT:
+							value = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(data));
+							break;
+						case Gltf::ComponentType::UNSIGNED_INT:
+							value = *reinterpret_cast<const uint32_t*>(data);
+							break;
+						}
+						mesh.indices[index] = value;
 					});
 			}
 

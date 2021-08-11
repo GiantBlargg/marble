@@ -323,6 +323,20 @@ const std::unordered_map<GLenum, int> type_size = {
 	offset += size * type_size.at(type);
 
 MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
+	if ((!mesh.has_normal /* || !mesh.has_tangent */) && !mesh.indices.empty()) {
+		const std::vector<float> old_vertex_data = std::move(mesh.vertex_data);
+		mesh.resize(mesh.indices.size(), mesh.has_normal, mesh.has_tangent, mesh.tex_coord_count, mesh.colour_count);
+
+		for (size_t i = 0; i < mesh.indices.size(); i++) {
+			uint32_t index = mesh.indices[i];
+			std::copy(
+				old_vertex_data.begin() + index * mesh.stride, old_vertex_data.begin() + (index + 1) * mesh.stride,
+				mesh.vertex_data.begin() + i * mesh.stride);
+		}
+
+		mesh.indices.clear();
+	}
+
 	if (!mesh.has_normal) {
 		size_t triangle_count = mesh.vertex_count / 3;
 		for (size_t triangle = 0; triangle < triangle_count; triangle++) {
@@ -337,7 +351,7 @@ MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
 	}
 	// TODO: Calculate tangents
 
-	if (mesh.indices.size() == 0) {
+	if (mesh.indices.empty()) {
 		// TODO: Proper welding
 		mesh.indices.resize(mesh.vertex_count);
 		for (size_t i = 0; i < mesh.vertex_count; i++) {

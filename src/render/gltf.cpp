@@ -553,6 +553,60 @@ void accessor_for_each(
 	}
 }
 
+uint8_t base64_value(char c) {
+	if (c >= 'A' && c <= 'Z')
+		return c - 'A';
+	if (c >= 'a' && c <= 'z')
+		return c - 'a' + 26;
+	if (c >= '0' && c <= '9')
+		return c - '0' + 52;
+	if (c == '-')
+		return 62;
+	if (c == '_')
+		return 63;
+}
+
+void base64_decode(std::string base64, std::vector<uint8_t>& buffer) {
+	for (size_t i = 0; i < buffer.size(); i++) {
+		uint8_t& byte = buffer[i];
+		size_t pos_in_group = i % 3;
+		size_t string_group_pos = i / 3 * 4;
+		switch (pos_in_group) {
+		case 0: {
+			byte =
+				(base64_value(base64[string_group_pos + 0]) << 2) + (base64_value(base64[string_group_pos + 1]) >> 4);
+		} break;
+		case 1:
+			byte =
+				(base64_value(base64[string_group_pos + 1]) << 4) + (base64_value(base64[string_group_pos + 2]) >> 2);
+			break;
+		case 2:
+			byte =
+				(base64_value(base64[string_group_pos + 2]) << 6) + (base64_value(base64[string_group_pos + 3]) >> 0);
+			break;
+
+		default:
+			assert(false);
+		}
+	}
+}
+
+void load_uri(std::string uri, std::filesystem::path current_path, std::vector<uint8_t>& buffer) {
+	if (uri.starts_with("data:")) {
+		size_t d = uri.find(";base64,");
+		if (d != std::string::npos) {
+			std::string base64 = uri.substr(d + 8);
+			base64_decode(base64, buffer);
+		} else {
+			std::cout << "I don't know how to load this uri: " << uri << std::endl;
+		}
+	} else {
+		std::filesystem::path dir = current_path.parent_path().append(uri);
+		std::ifstream buf(dir, std::ifstream::in | std::ifstream::binary);
+		buf.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
+	}
+}
+
 Model load_gltf(std::filesystem::path path, Render& render) {
 	std::ifstream gltf_file(path);
 	json j = json::parse(gltf_file);
@@ -562,13 +616,9 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 	buffers_data.resize(gltf.buffers.size());
 	for (size_t i = 0; i < buffers_data.size(); i++) {
 		buffers_data[i].resize(gltf.buffers[i].byteLength);
-		if (!gltf.buffers[i].uri.has_value()) {
-			std::cout << "I don't know how to load buffer " << i << std::endl;
-			continue;
+		if (gltf.buffers[i].uri.has_value()) {
+			load_uri(gltf.buffers[i].uri.value(), path, buffers_data[i]);
 		}
-		auto dir = path.parent_path().append(gltf.buffers[i].uri.value());
-		std::ifstream buf(dir, std::ifstream::in | std::ifstream::binary);
-		buf.read(reinterpret_cast<char*>(buffers_data[i].data()), buffers_data[i].size());
 	}
 
 	MaterialHandle default_material = render.create_pbr_material(MaterialPBR{.albedoFactor = vec4(1.0f)});

@@ -529,7 +529,7 @@ struct Gltf {
 
 void accessor_for_each(
 	const Gltf& gltf, const std::vector<std::vector<uint8_t>> buffers_data, size_t accessor_index,
-	std::function<void(const Gltf::Accessor&, size_t index, const uint8_t* data)> functor) {
+	std::function<void(size_t index, const void* data)> functor) {
 	const Gltf::Accessor& accessor = gltf.accessors[accessor_index];
 	const Gltf::BufferView& bufferView = gltf.bufferViews[accessor.bufferView.value()];
 	const std::vector<uint8_t>& buffer = buffers_data.at(bufferView.buffer);
@@ -549,7 +549,7 @@ void accessor_for_each(
 	for (size_t i = 0; i < accessor.count; i++) {
 		size_t offset = bufferView.byteOffset + stride * i + accessor.byteOffset;
 		const uint8_t* ptr = buffer.data() + offset;
-		functor(accessor, i, ptr);
+		functor(i, ptr);
 	}
 }
 
@@ -564,6 +564,7 @@ uint8_t base64_value(char c) {
 		return 62;
 	if (c == '_')
 		return 63;
+	return 0;
 }
 
 void base64_decode(std::string base64, std::vector<uint8_t>& buffer) {
@@ -636,31 +637,43 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 			Render::StandardMesh mesh(
 				count, has_normal, has_tangent, prim.attributes.texcoord.size(), prim.attributes.color.size());
 			accessor_for_each(
-				gltf, buffers_data, prim.attributes.position.value(),
-				[&mesh](const Gltf::Accessor& accessor, size_t vertex, const uint8_t* data) {
+				gltf, buffers_data, prim.attributes.position.value(), [&mesh](size_t vertex, const void* data) {
 					glm::vec3 value = *reinterpret_cast<const glm::vec3*>(data);
 					mesh.position(vertex) = value;
 				});
 
+			if (prim.attributes.normal.has_value()) {
+				accessor_for_each(
+					gltf, buffers_data, prim.attributes.normal.value(), [&mesh](size_t vertex, const void* data) {
+						glm::vec3 value = *reinterpret_cast<const glm::vec3*>(data);
+						mesh.normal(vertex) = value;
+					});
+			}
+
 			if (prim.indices.has_value()) {
 				mesh.indices.resize(gltf.accessors[prim.indices.value()].count);
-				accessor_for_each(
-					gltf, buffers_data, prim.indices.value(),
-					[&mesh](const Gltf::Accessor& accessor, size_t index, const uint8_t* data) {
-						uint32_t value;
-						switch (accessor.componentType) {
-						case Gltf::ComponentType::UNSIGNED_BYTE:
-							value = static_cast<uint32_t>(*data);
-							break;
-						case Gltf::ComponentType::UNSIGNED_SHORT:
-							value = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(data));
-							break;
-						case Gltf::ComponentType::UNSIGNED_INT:
-							value = *reinterpret_cast<const uint32_t*>(data);
-							break;
-						}
-						mesh.indices[index] = value;
-					});
+				std::function<void(size_t index, const void* data)> index_proc;
+				switch (gltf.accessors[prim.indices.value()].componentType) {
+				case Gltf::ComponentType::UNSIGNED_BYTE:
+					index_proc = [&mesh](size_t index, const void* data) {
+						mesh.indices[index] = static_cast<uint32_t>(*reinterpret_cast<const uint8_t*>(data));
+					};
+					break;
+				case Gltf::ComponentType::UNSIGNED_SHORT:
+					index_proc = [&mesh](size_t index, const void* data) {
+						mesh.indices[index] = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(data));
+					};
+					break;
+				case Gltf::ComponentType::UNSIGNED_INT:
+					index_proc = [&mesh](size_t index, const void* data) {
+						mesh.indices[index] = *reinterpret_cast<const uint32_t*>(data);
+					};
+					break;
+				default:
+					std::cout << "Invalid type" << std::endl;
+					continue;
+				}
+				accessor_for_each(gltf, buffers_data, prim.indices.value(), index_proc);
 			}
 
 			models[i].push_back(

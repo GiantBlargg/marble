@@ -42,7 +42,7 @@ GLFWwindow* init() {
 	return window;
 }
 
-Window::Window() : Window(init()){};
+Window::Window() : Window(init()) {}
 Window::Window(GLFWwindow* window) : render(glfwGetProcAddress), window(window) {
 	if (glfwRawMouseMotionSupported())
 		glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
@@ -69,7 +69,7 @@ Window::Window(GLFWwindow* window) : render(glfwGetProcAddress), window(window) 
 	ImGui::StyleColorsDark();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init(NULL);
-};
+}
 
 void Window::beginFrame() {
 	scroll.reset();

@@ -6,7 +6,7 @@
 #include "gl.hpp"
 
 namespace Render {
-void Core::meshes_setup(size_t){};
+void Core::meshes_setup(size_t) {}
 void Core::meshes_cleanup(size_t handle) {
 	auto& mesh = meshes_get(handle);
 	glDeleteVertexArrays(1, &(mesh.vao));

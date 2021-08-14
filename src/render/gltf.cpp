@@ -1,6 +1,8 @@
 #include "gltf.hpp"
 
 #include <fstream>
+#include <glm/gtc/packing.hpp>
+#include <glm/packing.hpp>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -357,17 +359,41 @@ struct Gltf {
 				std::vector<uint64_t> weights;
 
 				friend void from_json(const json& j, Attributes& attributes) {
-					for (auto& [key, val] : j.items()) {
-						uint64_t value;
-						val.get_to(value);
-						if (key == "POSITION")
-							attributes.position = value;
-						else if (key == "NORMAL")
-							attributes.normal = value;
-						else if (key == "TAGENT")
-							attributes.tangent = value;
-						else
-							std::cout << "Unknown Attribute: " << key << std::endl;
+					if (j.contains("POSITION"))
+						attributes.position = j.at("POSITION").get<uint64_t>();
+
+					if (j.contains("NORMAL"))
+						attributes.normal = j.at("NORMAL").get<uint64_t>();
+
+					if (j.contains("TAGENT"))
+						attributes.tangent = j.at("TAGENT").get<uint64_t>();
+
+					for (int i = 0; true; i++) {
+						std::string name = "TEXCOORD_" + std::to_string(i);
+						if (!j.contains(name))
+							break;
+						attributes.texcoord.push_back(j.at(name).get<uint64_t>());
+					}
+
+					for (int i = 0; true; i++) {
+						std::string name = "COLOR_" + std::to_string(i);
+						if (!j.contains(name))
+							break;
+						attributes.color.push_back(j.at(name).get<uint64_t>());
+					}
+
+					for (int i = 0; true; i++) {
+						std::string name = "JOINTS_" + std::to_string(i);
+						if (!j.contains(name))
+							break;
+						attributes.joints.push_back(j.at(name).get<uint64_t>());
+					}
+
+					for (int i = 0; true; i++) {
+						std::string name = "WEIGHTS_" + std::to_string(i);
+						if (!j.contains(name))
+							break;
+						attributes.weights.push_back(j.at(name).get<uint64_t>());
 					}
 				}
 			};
@@ -638,42 +664,92 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 				count, has_normal, has_tangent, prim.attributes.texcoord.size(), prim.attributes.color.size());
 			accessor_for_each(
 				gltf, buffers_data, prim.attributes.position.value(), [&mesh](size_t vertex, const void* data) {
-					glm::vec3 value = *reinterpret_cast<const glm::vec3*>(data);
-					mesh.position(vertex) = value;
+					mesh.position(vertex) = *reinterpret_cast<const glm::vec3*>(data);
 				});
 
 			if (prim.attributes.normal.has_value()) {
 				accessor_for_each(
 					gltf, buffers_data, prim.attributes.normal.value(), [&mesh](size_t vertex, const void* data) {
-						glm::vec3 value = *reinterpret_cast<const glm::vec3*>(data);
-						mesh.normal(vertex) = value;
+						mesh.normal(vertex) = *reinterpret_cast<const glm::vec3*>(data);
+					});
+			}
+
+			if (prim.attributes.tangent.has_value()) {
+				accessor_for_each(
+					gltf, buffers_data, prim.attributes.tangent.value(), [&mesh](size_t vertex, const void* data) {
+						mesh.tangent(vertex) = *reinterpret_cast<const glm::vec4*>(data);
+					});
+			}
+
+			for (size_t t = 0; t < prim.attributes.texcoord.size(); t++) {
+				static const std::unordered_map<Gltf::ComponentType, std::function<vec2(const void*)>> convert_funcs = {
+					{Gltf::ComponentType::FLOAT, [](const void* data) { return *reinterpret_cast<const vec2*>(data); }},
+					{Gltf::ComponentType::UNSIGNED_BYTE,
+					 [](const void* data) { return unpackUnorm2x8(*reinterpret_cast<const uint16*>(data)); }},
+					{Gltf::ComponentType::UNSIGNED_SHORT,
+					 [](const void* data) { return unpackUnorm2x16(*reinterpret_cast<const uint32*>(data)); }}};
+
+				const Gltf::Accessor& accessor = gltf.accessors[prim.attributes.texcoord[t]];
+				const std::function<vec2(const void*)> convert_func = convert_funcs.at(accessor.componentType);
+				accessor_for_each(
+					gltf, buffers_data, prim.attributes.texcoord[t],
+					[&mesh, convert_func, t](size_t index, const void* data) {
+						mesh.texcoord(t, index) = convert_func(data);
+					});
+			}
+
+			for (size_t c = 0; c < prim.attributes.color.size(); c++) {
+				static const std::unordered_map<
+					Gltf::Accessor::Type, std::unordered_map<Gltf::ComponentType, std::function<vec4(const void*)>>>
+					convert_funcs = {
+						{Gltf::Accessor::Type::VEC4,
+						 {
+							 {Gltf::ComponentType::FLOAT,
+							  [](const void* data) { return *reinterpret_cast<const vec4*>(data); }},
+							 {Gltf::ComponentType::UNSIGNED_BYTE,
+							  [](const void* data) { return unpackUnorm4x8(*reinterpret_cast<const uint32*>(data)); }},
+							 {Gltf::ComponentType::UNSIGNED_SHORT,
+							  [](const void* data) { return unpackUnorm4x16(*reinterpret_cast<const uint64*>(data)); }},
+						 }},
+						{Gltf::Accessor::Type::VEC3,
+						 {
+							 {Gltf::ComponentType::FLOAT,
+							  [](const void* data) { return vec4(*reinterpret_cast<const vec3*>(data), 1.0); }},
+							 {Gltf::ComponentType::UNSIGNED_BYTE,
+							  [](const void* data) {
+								  return vec4((vec3(*reinterpret_cast<const u8vec3*>(data)) / 255.0f), 1.0f);
+							  }},
+							 {Gltf::ComponentType::UNSIGNED_SHORT,
+							  [](const void* data) {
+								  return vec4((vec3(*reinterpret_cast<const u16vec3*>(data)) / 65535.0f), 1.0f);
+							  }},
+						 }}};
+
+				const Gltf::Accessor& accessor = gltf.accessors[prim.attributes.color[c]];
+				const std::function<vec4(const void*)> convert_func =
+					convert_funcs.at(accessor.type).at(accessor.componentType);
+				accessor_for_each(
+					gltf, buffers_data, prim.indices.value(), [&mesh, convert_func, c](size_t index, const void* data) {
+						mesh.colour(c, index) = convert_func(data);
 					});
 			}
 
 			if (prim.indices.has_value()) {
-				mesh.indices.resize(gltf.accessors[prim.indices.value()].count);
-				std::function<void(size_t index, const void* data)> index_proc;
-				switch (gltf.accessors[prim.indices.value()].componentType) {
-				case Gltf::ComponentType::UNSIGNED_BYTE:
-					index_proc = [&mesh](size_t index, const void* data) {
-						mesh.indices[index] = static_cast<uint32_t>(*reinterpret_cast<const uint8_t*>(data));
-					};
-					break;
-				case Gltf::ComponentType::UNSIGNED_SHORT:
-					index_proc = [&mesh](size_t index, const void* data) {
-						mesh.indices[index] = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(data));
-					};
-					break;
-				case Gltf::ComponentType::UNSIGNED_INT:
-					index_proc = [&mesh](size_t index, const void* data) {
-						mesh.indices[index] = *reinterpret_cast<const uint32_t*>(data);
-					};
-					break;
-				default:
-					std::cout << "Invalid type" << std::endl;
-					continue;
-				}
-				accessor_for_each(gltf, buffers_data, prim.indices.value(), index_proc);
+				static const std::unordered_map<Gltf::ComponentType, std::function<uint32(const void*)>> convert_funcs =
+					{{Gltf::ComponentType::UNSIGNED_BYTE,
+					  [](const void* data) { return *reinterpret_cast<const uint8*>(data); }},
+					 {Gltf::ComponentType::UNSIGNED_SHORT,
+					  [](const void* data) { return *reinterpret_cast<const uint16*>(data); }},
+					 {Gltf::ComponentType::UNSIGNED_INT,
+					  [](const void* data) { return *reinterpret_cast<const uint32*>(data); }}};
+
+				const Gltf::Accessor& accessor = gltf.accessors[prim.indices.value()];
+				mesh.indices.resize(accessor.count);
+				const std::function<uint32_t(const void*)> convert_func = convert_funcs.at(accessor.componentType);
+				accessor_for_each(
+					gltf, buffers_data, prim.indices.value(), [&mesh, convert_func](size_t index, const void* data) {
+						mesh.indices[index] = convert_func(data);
+					});
 			}
 
 			models[i].push_back(

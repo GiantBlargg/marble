@@ -65,12 +65,24 @@ class Render : public Core {
 		// Data is zeroed after resize
 
 		vec3& position(int vertex) {
-			size_t offset = stride * vertex;
+			const size_t offset = stride * vertex;
 			return *reinterpret_cast<vec3*>(vertex_data.data() + offset);
 		}
 		vec3& normal(int vertex) {
-			size_t offset = stride * vertex + 3;
+			const size_t offset = stride * vertex + 3;
 			return *reinterpret_cast<vec3*>(vertex_data.data() + offset);
+		}
+		vec4& tangent(int vertex) {
+			const size_t offset = stride * vertex + 3 + 3;
+			return *reinterpret_cast<vec4*>(vertex_data.data() + offset);
+		}
+		vec2& texcoord(int set, int vertex) {
+			const size_t offset = stride * vertex + 3 + 3 + 4 + 2 * set;
+			return *reinterpret_cast<vec2*>(vertex_data.data() + offset);
+		}
+		vec4& colour(int set, int vertex) {
+			const size_t offset = stride * vertex + 3 + 3 + 4 + 2 * tex_coord_count + 4 * set;
+			return *reinterpret_cast<vec4*>(vertex_data.data() + offset);
 		}
 
 		std::vector<uint32_t> indices;

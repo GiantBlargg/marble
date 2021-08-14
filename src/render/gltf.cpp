@@ -2,12 +2,30 @@
 
 #include <fstream>
 #include <glm/gtc/packing.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <glm/packing.hpp>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <optional>
 
 using json = nlohmann::json;
+
+namespace glm {
+template <length_t L, typename T> void from_json(const json& j, vec<L, T, defaultp>& v) {
+	auto array = j.get<std::array<T, L>>();
+	v = *reinterpret_cast<vec<L, T, defaultp>*>(&array);
+}
+
+template <typename T> void from_json(const json& j, qua<T, defaultp>& v) {
+	auto array = j.get<std::array<T, 4>>();
+	v = *reinterpret_cast<qua<T, defaultp>*>(&array);
+}
+
+template <length_t C, length_t R, typename T> void from_json(const json& j, mat<C, R, T, defaultp>& m) {
+	auto array = j.get<std::array<T, C * R>>();
+	m = *reinterpret_cast<mat<C, R, T, defaultp>*>(&array);
+}
+} // namespace glm
 
 namespace Render {
 
@@ -438,11 +456,11 @@ struct Gltf {
 		std::optional<uint64_t> camera;
 		std::vector<uint64_t> children;
 		std::optional<uint64_t> skin;
-		std::array<double, 16> matrix = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+		dmat4 matrix = dmat4(1.0f);
 		std::optional<uint64_t> mesh;
-		std::array<double, 4> rotation = {0, 0, 0, 1};
-		std::array<double, 3> scale = {1, 1, 1};
-		std::array<double, 3> translation = {0, 0, 0};
+		dquat rotation = {1, 0, 0, 0};
+		dvec3 scale = {1, 1, 1};
+		dvec3 translation = {0, 0, 0};
 		std::vector<double> weights;
 		std::optional<std::string> name;
 
@@ -634,7 +652,34 @@ void load_uri(std::string uri, std::filesystem::path current_path, std::vector<u
 	}
 }
 
+mat4 convert_transform(const Gltf::Node& node) {
+	const dmat4 T = translate(dmat4(1.0f), node.translation);
+	const dmat4 R = mat4_cast(node.rotation);
+	const dmat4 S = scale(dmat4(1.0f), node.scale);
+
+	return T * R * S * node.matrix;
+}
+
+void crawl_nodes(
+	const Gltf& gltf, const std::vector<uint64>& nodes, std::vector<Model::Surface>& surfaces,
+	const std::vector<std::vector<Model::Surface>>& models, const mat4& parent_transform = mat4(1.0)) {
+	for (uint64 n : nodes) {
+		auto& node = gltf.nodes[n];
+		const mat4 transform = parent_transform * convert_transform(node);
+
+		if (node.mesh.has_value()) {
+			for (auto mesh : models[node.mesh.value()]) {
+				mesh.transform = transform;
+				surfaces.push_back(mesh);
+			}
+		}
+
+		crawl_nodes(gltf, node.children, surfaces, models, transform);
+	}
+}
+
 Model load_gltf(std::filesystem::path path, Render& render) {
+
 	std::ifstream gltf_file(path);
 	json j = json::parse(gltf_file);
 	Gltf gltf = j.get<Gltf>();
@@ -757,7 +802,12 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 		}
 	}
 
-	return Model{.render = render, .surfaces = models[0]};
+	Model model{.render = render, .surfaces = {}};
+
+	if (gltf.scene.has_value())
+		crawl_nodes(gltf, gltf.scenes[gltf.scene.value()].nodes, model.surfaces, models);
+
+	return model;
 }
 
 } // namespace Render

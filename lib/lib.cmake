@@ -28,6 +28,7 @@ target_link_libraries(libs INTERFACE glm)
 
 add_library(stb ${CMAKE_CURRENT_LIST_DIR}/stb/stb.cpp)
 target_include_directories(stb INTERFACE ${CMAKE_CURRENT_LIST_DIR}/stb/)
+target_compile_definitions(stb PUBLIC STBI_ONLY_JPEG STBI_ONLY_PNG STBI_ONLY_HDR)
 target_link_libraries(libs INTERFACE stb)
 
 file(GLOB_RECURSE IMGUI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/imgui/*.cpp)

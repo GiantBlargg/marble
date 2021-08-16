@@ -1,12 +1,14 @@
 #include "gltf.hpp"
 
 #include <fstream>
+#include <gl.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/packing.hpp>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <stb_image.h>
 
 using json = nlohmann::json;
 
@@ -300,7 +302,7 @@ struct Gltf {
 			}
 		};
 		struct PbrMetallicRoughness {
-			std::array<double, 4> baseColorFactor = {1, 1, 1, 1};
+			dvec4 baseColorFactor = {1, 1, 1, 1};
 			std::optional<TextureInfo> baseColorTexture;
 			double metallicFactor = 1;
 			double roughnessFactor = 1;
@@ -314,7 +316,7 @@ struct Gltf {
 				FROM_JSON_OPTIONAL_TYPE(TextureInfo, metallicRoughnessTexture)
 			}
 		};
-		std::optional<PbrMetallicRoughness> pbrMetallicRoughness;
+		PbrMetallicRoughness pbrMetallicRoughness;
 		struct NormalTextureInfo {
 			uint64_t index;
 			uint64_t texCoord = 0;
@@ -340,7 +342,7 @@ struct Gltf {
 		};
 		std::optional<OcclusionTextureInfo> occlusionTexture;
 		std::optional<TextureInfo> emissiveTexture;
-		std::array<double, 3> emissiveFactor = {0, 0, 0};
+		dvec3 emissiveFactor = {0, 0, 0};
 		enum class AlphaMode {
 			OPAQUE,
 			MASK,
@@ -353,7 +355,7 @@ struct Gltf {
 		std::optional<std::string> name;
 
 		friend void from_json(const json& j, Material& t) {
-			FROM_JSON_OPTIONAL_TYPE(PbrMetallicRoughness, pbrMetallicRoughness)
+			FROM_JSON_OPTIONAL(pbrMetallicRoughness)
 			FROM_JSON_OPTIONAL_TYPE(NormalTextureInfo, normalTexture)
 			FROM_JSON_OPTIONAL_TYPE(OcclusionTextureInfo, occlusionTexture)
 			FROM_JSON_OPTIONAL_TYPE(TextureInfo, emissiveTexture)
@@ -495,8 +497,8 @@ struct Gltf {
 			 {Filter::LINEAR_MIPMAP_NEAREST, 9985},
 			 {Filter::NEAREST_MIPMAP_LINEAR, 9986},
 			 {Filter::LINEAR_MIPMAP_LINEAR, 9987}})
-		std::optional<Filter> magFilter;
-		std::optional<Filter> minFilter;
+		Filter magFilter = Filter::LINEAR;               // default is application defined
+		Filter minFilter = Filter::LINEAR_MIPMAP_LINEAR; // default is application defined
 		enum class Wrap { CLAMP_TO_EDGE, MIRRORED_REPEAT, REPEAT };
 		JSON_ENUM(Wrap, {{Wrap::CLAMP_TO_EDGE, 33071}, {Wrap::MIRRORED_REPEAT, 33648}, {Wrap::REPEAT, 10497}})
 		Wrap wrapS = Wrap::REPEAT;
@@ -504,8 +506,8 @@ struct Gltf {
 		std::optional<std::string> name;
 
 		friend void from_json(const json& j, Sampler& t) {
-			FROM_JSON_OPTIONAL_TYPE(Filter, magFilter)
-			FROM_JSON_OPTIONAL_TYPE(Filter, minFilter)
+			FROM_JSON_OPTIONAL(magFilter)
+			FROM_JSON_OPTIONAL(minFilter)
 			FROM_JSON_OPTIONAL(wrapS)
 			FROM_JSON_OPTIONAL(wrapT)
 			FROM_JSON_OPTIONAL_TYPE(std::string, name)
@@ -648,11 +650,16 @@ void load_uri(std::string uri, std::filesystem::path current_path, std::vector<u
 	} else {
 		std::filesystem::path dir = current_path.parent_path().append(uri);
 		std::ifstream buf(dir, std::ifstream::in | std::ifstream::binary);
+		if (buffer.empty()) {
+			buf.seekg(0, std::ifstream::end);
+			buffer.resize(buf.tellg());
+			buf.seekg(0, std::ifstream::beg);
+		}
 		buf.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
 	}
 }
 
-mat4 convert_transform(const Gltf::Node& node) {
+dmat4 convert_transform(const Gltf::Node& node) {
 	const dmat4 T = translate(dmat4(1.0f), node.translation);
 	const dmat4 R = mat4_cast(node.rotation);
 	const dmat4 S = scale(dmat4(1.0f), node.scale);
@@ -662,10 +669,10 @@ mat4 convert_transform(const Gltf::Node& node) {
 
 void crawl_nodes(
 	const Gltf& gltf, const std::vector<uint64>& nodes, std::vector<Model::Surface>& surfaces,
-	const std::vector<std::vector<Model::Surface>>& models, const mat4& parent_transform = mat4(1.0)) {
+	const std::vector<std::vector<Model::Surface>>& models, const dmat4& parent_transform = mat4(1.0)) {
 	for (uint64 n : nodes) {
 		auto& node = gltf.nodes[n];
-		const mat4 transform = parent_transform * convert_transform(node);
+		const dmat4 transform = parent_transform * convert_transform(node);
 
 		if (node.mesh.has_value()) {
 			for (auto mesh : models[node.mesh.value()]) {
@@ -678,8 +685,106 @@ void crawl_nodes(
 	}
 }
 
-Model load_gltf(std::filesystem::path path, Render& render) {
+struct ImageData {
+	int width;
+	int height;
+	int channels;
+	std::vector<uint8> data;
+};
 
+TextureHandle create_texture(const Gltf& gltf, const std::vector<ImageData>& images, uint64 index, bool srgb = false) {
+	const auto& texture_desc = gltf.textures[index];
+	const auto& image = images[texture_desc.source.value()];
+	Gltf::Sampler sampler;
+	if (texture_desc.sampler.has_value()) {
+		sampler = gltf.samplers[texture_desc.sampler.value()];
+	}
+
+	GLenum format, internalformat;
+	switch (image.channels) {
+	case 1:
+		format = GL_RED;
+		internalformat = GL_R8;
+		break;
+	case 2:
+		format = GL_RG;
+		internalformat = GL_RG8;
+		break;
+	case 3:
+		format = GL_RGB;
+		internalformat = srgb ? GL_SRGB8 : GL_RGB8;
+		break;
+	case 4:
+		format = GL_RGBA;
+		internalformat = srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+		break;
+	}
+
+	bool mipmaps =
+		sampler.minFilter != Gltf::Sampler::Filter::NEAREST && sampler.minFilter != Gltf::Sampler::Filter::LINEAR;
+
+	GLuint texture;
+	glCreateTextures(GL_TEXTURE_2D, 1, &texture);
+	auto levels = 1;
+	if (mipmaps)
+		levels = glm::max(glm::log2(min(image.width, image.height)), 1);
+
+	glTextureStorage2D(texture, levels, internalformat, image.width, image.height);
+
+	if (sampler.minFilter == Gltf::Sampler::Filter::LINEAR_MIPMAP_LINEAR)
+		glTextureParameterf(texture, GL_TEXTURE_MAX_ANISOTROPY, INFINITY);
+
+	glTextureSubImage2D(texture, 0, 0, 0, image.width, image.height, format, GL_UNSIGNED_BYTE, image.data.data());
+
+	const static std::unordered_map<Gltf::Sampler::Filter, GLint> texture_filter = {
+		{Gltf::Sampler::Filter::NEAREST, GL_NEAREST},
+		{Gltf::Sampler::Filter::LINEAR, GL_LINEAR},
+		{Gltf::Sampler::Filter::NEAREST_MIPMAP_NEAREST, GL_NEAREST_MIPMAP_NEAREST},
+		{Gltf::Sampler::Filter::LINEAR_MIPMAP_NEAREST, GL_LINEAR_MIPMAP_NEAREST},
+		{Gltf::Sampler::Filter::NEAREST_MIPMAP_LINEAR, GL_NEAREST_MIPMAP_LINEAR},
+		{Gltf::Sampler::Filter::LINEAR_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_LINEAR}};
+	glTextureParameteri(texture, GL_TEXTURE_MAG_FILTER, texture_filter.at(sampler.magFilter));
+	glTextureParameteri(texture, GL_TEXTURE_MIN_FILTER, texture_filter.at(sampler.minFilter));
+
+	const static std::unordered_map<Gltf::Sampler::Wrap, GLint> texture_wrap = {
+		{Gltf::Sampler::Wrap::CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE},
+		{Gltf::Sampler::Wrap::MIRRORED_REPEAT, GL_MIRRORED_REPEAT},
+		{Gltf::Sampler::Wrap::REPEAT, GL_REPEAT}};
+	glTextureParameteri(texture, GL_TEXTURE_WRAP_S, texture_wrap.at(sampler.wrapS));
+	glTextureParameteri(texture, GL_TEXTURE_WRAP_T, texture_wrap.at(sampler.wrapT));
+
+	if (mipmaps)
+		glGenerateTextureMipmap(texture);
+	return texture;
+}
+
+MaterialPBR convert_material(const Gltf& gltf, const std::vector<ImageData>& images, const Gltf::Material& material) {
+	std::optional<TextureHandle> albedoTexture;
+	if (material.pbrMetallicRoughness.baseColorTexture.has_value()) {
+		albedoTexture =
+			create_texture(gltf, images, material.pbrMetallicRoughness.baseColorTexture.value().index, true);
+	}
+	std::optional<TextureHandle> metalRoughTexture;
+	if (material.pbrMetallicRoughness.metallicRoughnessTexture.has_value()) {
+		metalRoughTexture =
+			create_texture(gltf, images, material.pbrMetallicRoughness.metallicRoughnessTexture.value().index);
+	}
+	std::optional<TextureHandle> emissiveTexture;
+	if (material.emissiveTexture.has_value()) {
+		emissiveTexture = create_texture(gltf, images, material.emissiveTexture.value().index);
+	}
+
+	return MaterialPBR{
+		.albedoFactor = material.pbrMetallicRoughness.baseColorFactor,
+		.albedoTexture = albedoTexture,
+		.metalFactor = static_cast<float>(material.pbrMetallicRoughness.metallicFactor),
+		.roughFactor = static_cast<float>(material.pbrMetallicRoughness.roughnessFactor),
+		.metalRoughTexture = metalRoughTexture,
+		.emissiveFactor = material.emissiveFactor,
+		.emissiveTexture = emissiveTexture};
+}
+
+Model load_gltf(std::filesystem::path path, Render& render) {
 	std::ifstream gltf_file(path);
 	json j = json::parse(gltf_file);
 	Gltf gltf = j.get<Gltf>();
@@ -693,7 +798,40 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 		}
 	}
 
-	MaterialHandle default_material = render.create_pbr_material(MaterialPBR{.albedoFactor = vec4(1.0f)});
+	std::vector<ImageData> images;
+	images.resize(gltf.images.size());
+	for (size_t i = 0; i < gltf.images.size(); i++) {
+		const auto& image = gltf.images[i];
+		std::vector<uint8> encoded_data;
+		if (image.bufferView.has_value()) {
+			const auto& bufferView = gltf.bufferViews[image.bufferView.value()];
+			const auto& buffer = buffers_data[bufferView.buffer];
+
+			const auto begin = buffer.begin() + bufferView.byteOffset;
+			const auto end = begin + bufferView.byteLength;
+
+			encoded_data = std::vector<uint8>(begin, end);
+		}
+		if (image.uri.has_value()) {
+			load_uri(image.uri.value(), path, encoded_data);
+		}
+
+		auto& image_data = images[i];
+		uint8* data = stbi_load_from_memory(
+			encoded_data.data(), encoded_data.size(), &image_data.width, &image_data.height, &image_data.channels, 0);
+		image_data.data = std::vector<uint8>(data, data + image_data.width * image_data.height * image_data.channels);
+		stbi_image_free(data);
+	}
+
+	MaterialHandle default_material = render.create_pbr_material(convert_material(gltf, images, Gltf::Material{}));
+
+	std::vector<MaterialHandle> materials;
+	materials.reserve(gltf.materials.size());
+	std::transform(
+		gltf.materials.begin(), gltf.materials.end(), std::back_inserter(materials),
+		[&render, &gltf, &images](const Gltf::Material& material) {
+			return render.create_pbr_material(convert_material(gltf, images, material));
+		});
 
 	std::vector<std::vector<Model::Surface>> models;
 	models.resize(gltf.meshes.size());
@@ -797,8 +935,11 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 					});
 			}
 
-			models[i].push_back(
-				Model::Surface{.mesh = render.standard_mesh_create(mesh), .material = default_material});
+			MaterialHandle material = default_material;
+			if (prim.material.has_value())
+				material = materials.at(prim.material.value());
+
+			models[i].push_back(Model::Surface{.mesh = render.standard_mesh_create(mesh), .material = material});
 		}
 	}
 

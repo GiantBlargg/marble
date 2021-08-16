@@ -606,23 +606,30 @@ uint8_t base64_value(char c) {
 		return c - 'a' + 26;
 	if (c >= '0' && c <= '9')
 		return c - '0' + 52;
-	if (c == '-')
+	if (c == '+' || c == '-')
 		return 62;
-	if (c == '_')
+	if (c == '/' || c == '_')
 		return 63;
 	return 0;
 }
 
 void base64_decode(std::string base64, std::vector<uint8_t>& buffer) {
+	if (buffer.empty()) {
+		while (base64.back() == '=')
+			base64.pop_back();
+
+		buffer.resize(base64.size() * (3.0f / 4.0f));
+	}
+
 	for (size_t i = 0; i < buffer.size(); i++) {
 		uint8_t& byte = buffer[i];
 		size_t pos_in_group = i % 3;
 		size_t string_group_pos = i / 3 * 4;
 		switch (pos_in_group) {
-		case 0: {
+		case 0:
 			byte =
 				(base64_value(base64[string_group_pos + 0]) << 2) + (base64_value(base64[string_group_pos + 1]) >> 4);
-		} break;
+			break;
 		case 1:
 			byte =
 				(base64_value(base64[string_group_pos + 1]) << 4) + (base64_value(base64[string_group_pos + 2]) >> 2);

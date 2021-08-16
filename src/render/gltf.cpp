@@ -791,12 +791,56 @@ MaterialPBR convert_material(const Gltf& gltf, const std::vector<ImageData>& ima
 		.emissiveTexture = emissiveTexture};
 }
 
+struct GLB {
+	struct Chunk {
+		uint32 type;
+		std::vector<uint8> data;
+	};
+	std::vector<Chunk> chunks;
+	friend std::istream& operator>>(std::istream& is, GLB& glb) {
+		glb.chunks.clear();
+
+		uint32 magic, version, length;
+		is.read(reinterpret_cast<char*>(&magic), 4);
+		is.read(reinterpret_cast<char*>(&version), 4);
+		is.read(reinterpret_cast<char*>(&length), 4);
+		assert(magic == 0x46546C67);
+		assert(version == 2);
+		size_t pos = 12;
+
+		while (pos < length) {
+			Chunk chunk;
+			uint32 chunkLength;
+			is.read(reinterpret_cast<char*>(&chunkLength), 4);
+			chunk.data.resize(chunkLength);
+			is.read(reinterpret_cast<char*>(&chunk.type), 4);
+
+			is.read(reinterpret_cast<char*>(chunk.data.data()), chunk.data.size());
+
+			glb.chunks.push_back(chunk);
+
+			pos += 8 + chunkLength;
+		}
+
+		return is;
+	}
+};
+
 Model load_gltf(std::filesystem::path path, Render& render) {
-	std::ifstream gltf_file(path);
-	json j = json::parse(gltf_file);
+	std::ifstream gltf_file(path, std::ifstream::binary);
+	json j;
+	std::vector<std::vector<uint8_t>> buffers_data;
+	if (gltf_file.peek() == 'g') {
+		GLB glb;
+		gltf_file >> glb;
+		j = json::parse(glb.chunks[0].data);
+		if (glb.chunks.size() > 1)
+			buffers_data.push_back(glb.chunks[1].data);
+	} else {
+		j = json::parse(gltf_file);
+	}
 	Gltf gltf = j.get<Gltf>();
 
-	std::vector<std::vector<uint8_t>> buffers_data;
 	buffers_data.resize(gltf.buffers.size());
 	for (size_t i = 0; i < buffers_data.size(); i++) {
 		buffers_data[i].resize(gltf.buffers[i].byteLength);

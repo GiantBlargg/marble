@@ -34,7 +34,8 @@ layout(std140, binding = 1) uniform Material {
 layout(binding = 6) uniform sampler2D albedoTex;
 layout(binding = 7) uniform sampler2D metalRoughTex;
 layout(binding = 8) uniform sampler2D normalTexture;
-layout(binding = 9) uniform sampler2D emissiveTexture;
+layout(binding = 9) uniform sampler2D occlusionTexture;
+layout(binding = 10) uniform sampler2D emissiveTexture;
 
 layout(location = 0) out vec4 outColour;
 
@@ -43,6 +44,7 @@ vec4 metalRough = texture(metalRoughTex, uv);
 float metallic = metalFactor * metalRough.b;
 float roughness = roughFactor * metalRough.g;
 vec3 tangent_normal = texture(normalTexture, uv).xyz * 2 - 1;
+vec3 occlusion = texture(occlusionTexture, uv).xyz;
 vec3 emissive = emissiveFactor * texture(emissiveTexture, uv).rgb;
 
 vec3 wo = normalize(camPos - pos);
@@ -103,7 +105,7 @@ vec3 enviroment() {
 void main() {
 	vec3 colour = emissive;
 
-	colour += enviroment();
+	colour += enviroment() * occlusion;
 
 	for (int i = 0; i < dirLights.length(); ++i) {
 		vec4 shadowSample = (dirLights[i].shadowMapTrans * vec4(pos, 1));

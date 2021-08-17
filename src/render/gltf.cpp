@@ -770,19 +770,30 @@ MaterialPBR convert_material(const Gltf& gltf, const std::vector<ImageData>& ima
 	if (material.pbrMetallicRoughness.baseColorTexture.has_value()) {
 		albedoTexture =
 			create_texture(gltf, images, material.pbrMetallicRoughness.baseColorTexture.value().index, true);
+		assert(material.pbrMetallicRoughness.baseColorTexture.value().texCoord == 0);
 	}
 	std::optional<TextureHandle> metalRoughTexture;
 	if (material.pbrMetallicRoughness.metallicRoughnessTexture.has_value()) {
 		metalRoughTexture =
 			create_texture(gltf, images, material.pbrMetallicRoughness.metallicRoughnessTexture.value().index);
+		assert(material.pbrMetallicRoughness.metallicRoughnessTexture.value().texCoord == 0);
 	}
 	std::optional<TextureHandle> normalTexture;
 	if (material.normalTexture.has_value()) {
 		normalTexture = create_texture(gltf, images, material.normalTexture.value().index);
+		assert(material.normalTexture.value().texCoord == 0);
+		assert(material.normalTexture.value().scale == 1);
+	}
+	std::optional<TextureHandle> occlusionTexture;
+	if (material.occlusionTexture.has_value()) {
+		occlusionTexture = create_texture(gltf, images, material.occlusionTexture.value().index);
+		assert(material.occlusionTexture.value().texCoord == 0);
+		assert(material.occlusionTexture.value().strength == 1);
 	}
 	std::optional<TextureHandle> emissiveTexture;
 	if (material.emissiveTexture.has_value()) {
 		emissiveTexture = create_texture(gltf, images, material.emissiveTexture.value().index);
+		assert(material.emissiveTexture.value().texCoord == 0);
 	}
 
 	return MaterialPBR{
@@ -792,6 +803,7 @@ MaterialPBR convert_material(const Gltf& gltf, const std::vector<ImageData>& ima
 		.roughFactor = static_cast<float>(material.pbrMetallicRoughness.roughnessFactor),
 		.metalRoughTexture = metalRoughTexture,
 		.normalTexture = normalTexture,
+		.occlusionTexture = occlusionTexture,
 		.emissiveFactor = material.emissiveFactor,
 		.emissiveTexture = emissiveTexture};
 }

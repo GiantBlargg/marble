@@ -3,7 +3,6 @@
 #include <array>
 #include <glm/gtc/integer.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>

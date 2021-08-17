@@ -12,6 +12,7 @@ struct MaterialPBR {
 	float roughFactor;
 	std::optional<TextureHandle> metalRoughTexture;
 	std::optional<TextureHandle> normalTexture;
+	std::optional<TextureHandle> occlusionTexture;
 	vec3 emissiveFactor;
 	std::optional<TextureHandle> emissiveTexture;
 };

@@ -67,6 +67,7 @@ MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
 		pbr.albedoTexture.value_or(whiteTexture),
 		pbr.metalRoughTexture.value_or(whiteTexture),
 		pbr.normalTexture.value_or(default_normal_texture),
+		pbr.occlusionTexture.value_or(whiteTexture),
 		pbr.emissiveTexture.value_or(whiteTexture)};
 
 	return materials_insert(Material{
@@ -125,6 +126,7 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 
 	glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &reflection);
 	glTextureStorage2D(reflection, reflectionLevels, GL_RGB16F, reflectionSize, reflectionSize);
+	glTextureParameteri(reflection, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 
 	glCreateTextures(GL_TEXTURE_2D, 1, &reflectionBRDF);
 	glTextureStorage2D(reflectionBRDF, 1, GL_RG16F, reflectionBRDFSize, reflectionBRDFSize);

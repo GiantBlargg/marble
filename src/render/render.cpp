@@ -2,9 +2,7 @@
 
 #include "gl.hpp"
 #include "shaders.h"
-#include <cstring>
-#include <fstream>
-#include <sstream>
+#include <mikktspace.h>
 #include <string>
 
 namespace Render {
@@ -59,6 +57,8 @@ MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
 
 	static uint8_t white[3] = {255, 255, 255};
 	static auto whiteTexture = create_texture(1, 1, 3, Core::TextureFlags::NONE, &white);
+	static uint8_t default_normal[3] = {127, 127, 255};
+	static auto default_normal_texture = create_texture(1, 1, 3, Core::TextureFlags::NONE, &default_normal);
 
 	std::vector<TextureHandle> textures = {
 		irradiance,
@@ -66,6 +66,7 @@ MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
 		reflectionBRDF,
 		pbr.albedoTexture.value_or(whiteTexture),
 		pbr.metalRoughTexture.value_or(whiteTexture),
+		pbr.normalTexture.value_or(default_normal_texture),
 		pbr.emissiveTexture.value_or(whiteTexture)};
 
 	return materials_insert(Material{
@@ -322,8 +323,47 @@ const std::unordered_map<GLenum, int> type_size = {
 	glVertexArrayAttribBinding(vao, attribindex, 0);                                                                   \
 	offset += size * type_size.at(type);
 
+int mikkGetNumFaces(const SMikkTSpaceContext* pContext) {
+	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
+	return mesh.get_vertex_count() / 3;
+}
+int mikkGetNumVerticesOfFace(const SMikkTSpaceContext*, const int) { return 3; }
+void mikkGetPosition(const SMikkTSpaceContext* pContext, float fvPosOut[], const int iFace, const int iVert) {
+	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
+	vec3& pos = mesh.position(iFace * 3 + iVert);
+	fvPosOut[0] = pos.x;
+	fvPosOut[1] = pos.y;
+	fvPosOut[2] = pos.z;
+}
+void mikkGetNormal(const SMikkTSpaceContext* pContext, float fvNormOut[], const int iFace, const int iVert) {
+	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
+	vec3& normal = mesh.normal(iFace * 3 + iVert);
+	fvNormOut[0] = normal.x;
+	fvNormOut[1] = normal.y;
+	fvNormOut[2] = normal.z;
+}
+void mikkGetTexCoord(const SMikkTSpaceContext* pContext, float fvTexcOut[], const int iFace, const int iVert) {
+	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
+	vec2& uv = mesh.texcoord(0, iFace * 3 + iVert);
+	fvTexcOut[0] = uv.x;
+	fvTexcOut[1] = uv.y;
+}
+void mikkSetTSpaceBasic(
+	const SMikkTSpaceContext* pContext, const float fvTangent[], const float fSign, const int iFace, const int iVert) {
+	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
+	mesh.tangent(iFace * 3 + iVert) = vec4{fvTangent[0], fvTangent[1], fvTangent[2], fSign};
+}
+
+SMikkTSpaceInterface mikk_inter{
+	.m_getNumFaces = mikkGetNumFaces,
+	.m_getNumVerticesOfFace = mikkGetNumVerticesOfFace,
+	.m_getPosition = mikkGetPosition,
+	.m_getNormal = mikkGetNormal,
+	.m_getTexCoord = mikkGetTexCoord,
+	.m_setTSpaceBasic = mikkSetTSpaceBasic};
+
 MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
-	if ((!mesh.has_normal /* || !mesh.has_tangent */) && !mesh.indices.empty()) {
+	if ((!mesh.has_normal || !mesh.has_tangent) && !mesh.indices.empty()) {
 		const std::vector<float> old_vertex_data = std::move(mesh.vertex_data);
 		mesh.resize(mesh.indices.size(), mesh.has_normal, mesh.has_tangent, mesh.tex_coord_count, mesh.colour_count);
 
@@ -349,7 +389,11 @@ MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
 			mesh.normal(triangle * 3 + 2) = normal;
 		}
 	}
-	// TODO: Calculate tangents
+
+	if (!mesh.has_tangent && mesh.tex_coord_count > 0) {
+		SMikkTSpaceContext mikk_ctx{.m_pInterface = &mikk_inter, .m_pUserData = &mesh};
+		genTangSpaceDefault(&mikk_ctx);
+	}
 
 	if (mesh.indices.empty()) {
 		// TODO: Proper welding

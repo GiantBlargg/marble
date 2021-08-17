@@ -11,6 +11,7 @@ struct MaterialPBR {
 	float metalFactor;
 	float roughFactor;
 	std::optional<TextureHandle> metalRoughTexture;
+	std::optional<TextureHandle> normalTexture;
 	vec3 emissiveFactor;
 	std::optional<TextureHandle> emissiveTexture;
 };
@@ -63,6 +64,8 @@ class Render : public Core {
 		}
 		void resize(size_t vertex, bool has_normal, bool has_tangent, size_t tex_coord, size_t colour);
 		// Data is zeroed after resize
+
+		size_t get_vertex_count() { return vertex_count; }
 
 		vec3& position(int vertex) {
 			const size_t offset = stride * vertex;

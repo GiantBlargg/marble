@@ -776,6 +776,10 @@ MaterialPBR convert_material(const Gltf& gltf, const std::vector<ImageData>& ima
 		metalRoughTexture =
 			create_texture(gltf, images, material.pbrMetallicRoughness.metallicRoughnessTexture.value().index);
 	}
+	std::optional<TextureHandle> normalTexture;
+	if (material.normalTexture.has_value()) {
+		normalTexture = create_texture(gltf, images, material.normalTexture.value().index);
+	}
 	std::optional<TextureHandle> emissiveTexture;
 	if (material.emissiveTexture.has_value()) {
 		emissiveTexture = create_texture(gltf, images, material.emissiveTexture.value().index);
@@ -787,6 +791,7 @@ MaterialPBR convert_material(const Gltf& gltf, const std::vector<ImageData>& ima
 		.metalFactor = static_cast<float>(material.pbrMetallicRoughness.metallicFactor),
 		.roughFactor = static_cast<float>(material.pbrMetallicRoughness.roughnessFactor),
 		.metalRoughTexture = metalRoughTexture,
+		.normalTexture = normalTexture,
 		.emissiveFactor = material.emissiveFactor,
 		.emissiveTexture = emissiveTexture};
 }

@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 norm;
+layout(location = 2) in vec4 tang;
 layout(location = 3) in vec2 uv;
 
 layout(binding = 0) uniform sampler2DArrayShadow dirLightShadowMaps;
@@ -32,7 +33,8 @@ layout(std140, binding = 1) uniform Material {
 };
 layout(binding = 6) uniform sampler2D albedoTex;
 layout(binding = 7) uniform sampler2D metalRoughTex;
-layout(binding = 8) uniform sampler2D emissiveTexture;
+layout(binding = 8) uniform sampler2D normalTexture;
+layout(binding = 9) uniform sampler2D emissiveTexture;
 
 layout(location = 0) out vec4 outColour;
 
@@ -40,11 +42,14 @@ vec4 albedo = albedoFactor * texture(albedoTex, uv);
 vec4 metalRough = texture(metalRoughTex, uv);
 float metallic = metalFactor * metalRough.b;
 float roughness = roughFactor * metalRough.g;
+vec3 tangent_normal = texture(normalTexture, uv).xyz * 2 - 1;
 vec3 emissive = emissiveFactor * texture(emissiveTexture, uv).rgb;
 
 vec3 wo = normalize(camPos - pos);
-vec3 normal = normalize(norm);
-vec3 colour = emissive;
+vec3 prim_normal = normalize(norm);
+vec3 tangent = normalize(tang.xyz);
+vec3 bitangent = normalize(tang.w * cross(prim_normal, tangent));
+vec3 normal = normalize(mat3(tangent, bitangent, prim_normal) * tangent_normal);
 
 const float pi = 3.1415927;
 
@@ -96,6 +101,8 @@ vec3 enviroment() {
 }
 
 void main() {
+	vec3 colour = emissive;
+
 	colour += enviroment();
 
 	for (int i = 0; i < dirLights.length(); ++i) {

@@ -47,5 +47,16 @@ add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE ${json_SOURCE_DIR}/include)
 target_link_libraries(libs INTERFACE nlohmann_json)
 
+FetchContent_Declare(mikktspace
+	GIT_REPOSITORY https://github.com/mmikk/MikkTSpace.git
+	GIT_TAG 3e895b4
+)
+if(NOT mikktspace_POPULATED)
+	FetchContent_Populate(mikktspace)
+endif()
+add_library(mikktspace ${mikktspace_SOURCE_DIR}/mikktspace.c)
+target_include_directories(mikktspace INTERFACE ${mikktspace_SOURCE_DIR})
+target_link_libraries(libs INTERFACE mikktspace)
+
 # find_package(OpenAL REQUIRED CONFIG)
 # target_link_libraries(libs INTERFACE OpenAL::OpenAL)

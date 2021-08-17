@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(marble LANGUAGES CXX)
+project(marble LANGUAGES C CXX)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/src/*.cpp)
 add_executable(marble ${SOURCES})

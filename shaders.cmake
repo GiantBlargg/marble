@@ -2,48 +2,46 @@ find_program(GLSLC NAMES glslc REQUIRED)
 
 set(BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders/)
 
-add_library(shaders INTERFACE)
-target_include_directories(shaders INTERFACE ${BINARY_DIR}/include)
-
 file(GLOB_RECURSE SHADERS CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/shaders/*.vert ${CMAKE_CURRENT_LIST_DIR}/shaders/*.frag)
 
+set(shaders_hpp ${BINARY_DIR}/include/shaders.hpp)
+file(WRITE ${shaders_hpp} "#pragma once\n#include <vector>\n#include <cstdint>\nnamespace Render::Shaders {\n")
+
 foreach(glsl_file ${SHADERS})
-	file(RELATIVE_PATH relpath ${CMAKE_CURRENT_LIST_DIR}/shaders/ ${glsl_file})
-	set(spv_file ${BINARY_DIR}/${relpath})
-	set(depfile ${BINARY_DIR}/${relpath}.d)
-	set(hfile ${BINARY_DIR}/${relpath}.h)
+	file(RELATIVE_PATH rel_path ${CMAKE_CURRENT_LIST_DIR}/shaders/ ${glsl_file})
+	set(spv_file ${BINARY_DIR}/${rel_path})
+	set(dep_file ${BINARY_DIR}/${rel_path}.d)
+	set(cpp_file ${BINARY_DIR}/${rel_path}.cpp)
 	add_custom_command(
 		COMMAND ${GLSLC}
 			${glsl_file} -o ${spv_file}
 			--target-env=opengl -mfmt=c
-			-MD -MF ${depfile}
+			-MD -MF ${dep_file}
 		
 		OUTPUT ${spv_file}
 		DEPENDS ${glsl_file}
-		DEPFILE ${depfile}
+		DEPFILE ${dep_file}
 	)
-	string(REGEX REPLACE "[^a-zA-Z0-9]" "_" name ${relpath})
-	file(WRITE ${hfile}_start "const std::vector<uint32_t> ${name} = \n")
-	file(WRITE ${hfile}_end ";\n")
+	string(REGEX REPLACE "[^a-zA-Z0-9]" "_" name ${rel_path})
+	file(APPEND ${shaders_hpp} "extern const std::vector<uint32_t> ${name};\n")
+	file(WRITE ${cpp_file}_start "#include \"shaders.hpp\"\nconst std::vector<uint32_t> Render::Shaders::${name} = \n")
+	file(WRITE ${cpp_file}_end ";\n")
 	add_custom_command(
-		COMMAND ${CMAKE_COMMAND} -E cat ${hfile}_start ${spv_file} ${hfile}_end > ${hfile}
-		OUTPUT ${hfile}
-		DEPENDS ${spv_file} ${hfile}_start ${hfile}_end
+		COMMAND ${CMAKE_COMMAND} -E cat ${cpp_file}_start ${spv_file} ${cpp_file}_end > ${cpp_file}
+		OUTPUT ${cpp_file}
+		DEPENDS ${spv_file} ${cpp_file}_start ${cpp_file}_end
 	)
-	set(SPIRV_SHADERS ${SPIRV_SHADERS} ${hfile})
+	set(SPIRV_SHADERS ${SPIRV_SHADERS} ${cpp_file})
 endforeach()
 
-set(shaders_h ${BINARY_DIR}/include/shaders.h)
-set(shaders_h_start ${BINARY_DIR}/shaders.h_start)
-set(shaders_h_end ${BINARY_DIR}/shaders.h_end)
-file(WRITE ${shaders_h_start} "#pragma once\n#include <vector>\nnamespace Render::Shaders {\n")
-file(WRITE ${shaders_h_end} "}\n")
-add_custom_command(
-	COMMAND ${CMAKE_COMMAND} -E cat ${shaders_h_start} ${SPIRV_SHADERS} ${shaders_h_end} > ${shaders_h}
-	OUTPUT ${shaders_h}
-	DEPENDS ${shaders_h_start} ${SPIRV_SHADERS} ${shaders_h_end}
-)
-target_sources(shaders INTERFACE ${shaders_h})
+file(APPEND ${shaders_hpp} "}\n")
+
+add_library(shaders ${SPIRV_SHADERS} ${shaders_hpp})
+target_include_directories(shaders PUBLIC ${BINARY_DIR}/include)
+
+set_property(TARGET shaders PROPERTY CXX_STANDARD 20)
+set_property(TARGET shaders PROPERTY CXX_STANDARD_REQUIRED ON)
+set_property(TARGET shaders PROPERTY CXX_EXTENSIONS OFF)
 
 
 

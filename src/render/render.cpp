@@ -1,7 +1,7 @@
 #include "render.hpp"
 
 #include "gl.hpp"
-#include "shaders.h"
+#include "shaders.hpp"
 #include <mikktspace.h>
 #include <string>
 

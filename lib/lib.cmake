@@ -31,10 +31,21 @@ target_include_directories(stb INTERFACE ${CMAKE_CURRENT_LIST_DIR}/stb/)
 target_compile_definitions(stb PUBLIC STBI_ONLY_JPEG STBI_ONLY_PNG STBI_ONLY_HDR)
 target_link_libraries(libs INTERFACE stb)
 
-file(GLOB_RECURSE IMGUI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/imgui/*.cpp)
-add_library(imgui ${IMGUI_SOURCES})
-target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_LIST_DIR}/imgui/)
-target_link_libraries(imgui gl glfw)
+FetchContent_Declare(IMGUI URL https://github.com/ocornut/imgui/archive/refs/tags/v1.84.2.zip)
+if(NOT imgui_POPULATED)
+	FetchContent_Populate(IMGUI)
+endif()
+add_library(imgui
+	${imgui_SOURCE_DIR}/imgui.cpp
+	${imgui_SOURCE_DIR}/imgui_draw.cpp
+	${imgui_SOURCE_DIR}/imgui_tables.cpp
+	${imgui_SOURCE_DIR}/imgui_widgets.cpp
+	${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+	${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_link_libraries(imgui glfw ${CMAKE_DL_LIBS})
+target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS IMGUI_DISABLE_DEMO_WINDOWS)
 target_link_libraries(libs INTERFACE imgui)
 
 FetchContent_Declare(json

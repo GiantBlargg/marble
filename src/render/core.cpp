@@ -34,6 +34,9 @@ void Core::materials_cleanup(size_t handle) {
 void Core::surfaces_setup(size_t handle) { materials_get(surfaces_get(handle).material).surfaces.emplace(handle); }
 void Core::surfaces_cleanup(size_t handle) { materials_get(surfaces_get(handle).material).surfaces.erase(handle); }
 
+void Core::dir_lights_setup(size_t) {}
+void Core::dir_lights_cleanup(size_t) {}
+
 Core::Core(void (*glGetProcAddr(const char*))()) {
 	loadGL(glGetProcAddr);
 
@@ -149,8 +152,7 @@ void Core::run() {
 	glDisable(GL_BLEND);
 	glDepthFunc(GL_LEQUAL);
 
-	std::vector<DirLight> dirLights;
-	this->dirLights.vector_push(dirLights);
+	std::vector<DirLight> dirLights = dir_lights_dense;
 
 	glNamedBufferData(dirLightBuffer, vector_size(dirLights), dirLights.data(), GL_DYNAMIC_DRAW);
 

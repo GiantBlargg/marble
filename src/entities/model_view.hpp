@@ -25,7 +25,7 @@ class ModelView : public Entity {
 		modelInstance.emplace(model);
 
 		float pi = glm::pi<float>();
-		Engine::get_instance()->render.create_dir_light({pi, pi, pi}, {1, 1, 1});
+		Engine::get_instance()->render.dir_light_create({pi, pi, pi}, {1, 1, 1});
 		// render.create_dir_light({2, 2, 2}, {-1, 0, 1});
 		// render.create_dir_light({1, 1, 1}, {0, 0, -1});
 	}

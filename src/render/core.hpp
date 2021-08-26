@@ -135,44 +135,6 @@ using namespace glm;
 	T& name##_get(T##Handle& handle) { return name##_dense.at(name##_lookup.at(handle.handle)); }                      \
 	void name##_delete(T##Handle handle) { name##_delete(handle.handle); }
 
-template <class T> class Container {
-  public:
-	typedef uint Handle;
-
-  private:
-	std::unordered_map<Handle, T> map;
-	Handle next_handle = 0;
-
-  public:
-	Handle emplace() {
-		Handle handle;
-		do
-			handle = next_handle++;
-		while (map.contains(handle));
-		map[handle];
-		return handle;
-	}
-	template <typename... Args> Handle emplace(Args&&... args) {
-		Handle handle;
-		do
-			handle = next_handle++;
-		while (map.contains(handle));
-		map.emplace(handle, std::forward<Args>(args)...);
-		return handle;
-	}
-	void erase(Handle handle) { map.erase(handle); }
-	T& at(const Handle& handle) { return map.at(handle); }
-	typename std::unordered_map<Handle, T>::iterator begin() { return map.begin(); }
-	typename std::unordered_map<Handle, T>::iterator end() { return map.end(); }
-	void vector_push(std::vector<T>& v) {
-		v.reserve(v.size() + map.size());
-		for (auto& i : map) {
-			v.push_back(i.second);
-		}
-	}
-};
-
-typedef uint DirLightHandle;
 typedef uint TextureHandle;
 
 class Core {
@@ -248,6 +210,31 @@ class Core {
 
 	void surface_delete(SurfaceHandle surface) { surfaces_delete(std::move(surface)); }
 
+  protected:
+	struct DirLight {
+		vec3 dir;
+		float _pad0;
+		vec3 colour;
+		float _pad1;
+		mat4 shadowMapTrans;
+	};
+	INSTANCE_CONTAINER(DirLight, dir_lights, Core)
+  public:
+	DirLightHandle dir_light_create(vec3 colour, vec3 dir) {
+		DirLightHandle handle = dir_lights_insert(DirLight{});
+		dir_light_set_colour(handle, colour);
+		dir_light_set_dir(handle, dir);
+		return handle;
+	}
+
+	void dir_light_set_colour(DirLightHandle& handle, vec3 colour) { dir_lights_get(handle).colour = colour; }
+	void dir_light_set_dir(DirLightHandle& handle, vec3 dir) {
+		dir_lights_get(handle).dir = normalize(dir);
+		dir_lights_get(handle).shadowMapTrans = ortho(
+													-lightmapCoverage, lightmapCoverage, -lightmapCoverage,
+													lightmapCoverage, -lightmapCoverage, lightmapCoverage) *
+			lookAt(vec3{0, 0, 0}, -dir_lights_get(handle).dir, vec3{0, 1, 0});
+	}
 	// End Instances
 
   protected:
@@ -268,14 +255,6 @@ class Core {
 	const int lightmapSize = 4096;
 	const float lightmapCoverage = 300;
 
-	struct DirLight {
-		vec3 dir;
-		float _pad0;
-		vec3 colour;
-		float _pad1;
-		mat4 shadowMapTrans;
-	};
-	Container<DirLight> dirLights;
 	GLuint dirLightBuffer, dirLightShadow;
 
 	enum class RenderOrder {
@@ -296,21 +275,6 @@ class Core {
 	void camera_set_pos(mat4 pos) { cameraPos = glm::inverse(pos); }
 	void camera_set_fov(float degrees) { fov = radians(degrees); }
 
-	DirLightHandle create_dir_light(vec3 colour, vec3 dir) {
-		uint handle = dirLights.emplace();
-		dir_light_set_colour(handle, colour);
-		dir_light_set_dir(handle, dir);
-		return handle;
-	}
-	void dir_light_set_colour(DirLightHandle handle, vec3 colour) { dirLights.at(handle).colour = colour; }
-	void dir_light_set_dir(DirLightHandle handle, vec3 dir) {
-		dirLights.at(handle).dir = normalize(dir);
-		dirLights.at(handle).shadowMapTrans = ortho(
-												  -lightmapCoverage, lightmapCoverage, -lightmapCoverage,
-												  lightmapCoverage, -lightmapCoverage, lightmapCoverage) *
-			lookAt(vec3{0, 0, 0}, -dirLights.at(handle).dir, vec3{0, 1, 0});
-	}
-
 	enum TextureFlags { NONE = 0, SRGB = 1 << 0, MIPMAPPED = 1 << 1, ANIOSTROPIC = 1 << 2, CLAMPED = 1 << 3 };
 	friend inline TextureFlags operator|(const TextureFlags lhs, const TextureFlags rhs) {
 		return static_cast<TextureFlags>(static_cast<int>(lhs) | static_cast<int>(rhs));
@@ -325,5 +289,6 @@ typedef Core::ShaderHandle ShaderHandle;
 typedef Core::MaterialHandle MaterialHandle;
 
 typedef Core::SurfaceHandle SurfaceHandle;
+typedef Core::DirLightHandle DirLightHandle;
 
 } // namespace Render

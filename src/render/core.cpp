@@ -152,7 +152,25 @@ void Core::run() {
 	glDisable(GL_BLEND);
 	glDepthFunc(GL_LEQUAL);
 
-	std::vector<DirLight> dirLights = dir_lights_dense;
+	struct _DirLight {
+		vec3 dir;
+		float _pad0;
+		vec3 colour;
+		float _pad1;
+		mat4 shadowMapTrans;
+	};
+
+	static const mat4 dirLightProj = ortho(
+		-lightmapCoverage, lightmapCoverage, -lightmapCoverage, lightmapCoverage, -lightmapCoverage, lightmapCoverage);
+	std::vector<_DirLight> dirLights;
+	dirLights.resize(dir_lights_dense.size());
+	std::transform(dir_lights_dense.begin(), dir_lights_dense.end(), dirLights.begin(), [](DirLight& dirlight) {
+		return _DirLight{
+			.dir = dirlight.dir,
+			.colour = dirlight.colour,
+			.shadowMapTrans = dirLightProj * lookAt(vec3{0, 0, 0}, -dirlight.dir, vec3{0, 1, 0}),
+		};
+	});
 
 	glNamedBufferData(dirLightBuffer, vector_size(dirLights), dirLights.data(), GL_DYNAMIC_DRAW);
 

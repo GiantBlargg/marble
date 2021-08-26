@@ -213,10 +213,7 @@ class Core {
   protected:
 	struct DirLight {
 		vec3 dir;
-		float _pad0;
 		vec3 colour;
-		float _pad1;
-		mat4 shadowMapTrans;
 	};
 	INSTANCE_CONTAINER(DirLight, dir_lights, Core)
   public:
@@ -228,13 +225,7 @@ class Core {
 	}
 
 	void dir_light_set_colour(DirLightHandle& handle, vec3 colour) { dir_lights_get(handle).colour = colour; }
-	void dir_light_set_dir(DirLightHandle& handle, vec3 dir) {
-		dir_lights_get(handle).dir = normalize(dir);
-		dir_lights_get(handle).shadowMapTrans = ortho(
-													-lightmapCoverage, lightmapCoverage, -lightmapCoverage,
-													lightmapCoverage, -lightmapCoverage, lightmapCoverage) *
-			lookAt(vec3{0, 0, 0}, -dir_lights_get(handle).dir, vec3{0, 1, 0});
-	}
+	void dir_light_set_dir(DirLightHandle& handle, vec3 dir) { dir_lights_get(handle).dir = normalize(dir); }
 	// End Instances
 
   protected:

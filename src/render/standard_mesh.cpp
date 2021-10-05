@@ -2,6 +2,7 @@
 
 #include <glm/geometric.hpp>
 #include <mikktspace.h>
+#include <weldmesh.h>
 
 namespace Render {
 
@@ -56,18 +57,21 @@ void StandardMesh::deindex() {
 
 void StandardMesh::reindex() {
 	deindex();
-	// TODO: Proper welding
 	indices.resize(vertex_count);
-	for (size_t i = 0; i < vertex_count; i++) {
-		indices[i] = i;
-	}
+	std::vector<float> vertex_out;
+	vertex_out.resize(vertex_count * stride);
+	vertex_count =
+		WeldMesh(reinterpret_cast<int*>(indices.data()), vertex_out.data(), vertex_data.data(), vertex_count, stride);
+	vertex_data = vertex_out;
+	vertex_data.resize(vertex_count * stride);
 }
 
 void StandardMesh::gen_normals() {
 	deindex();
 	if (!format.has_normal) {
-		format.has_normal = true;
-		resize(vertex_count, format);
+		Format f = format;
+		f.has_normal = true;
+		resize(f);
 	}
 	size_t triangle_count = vertex_count / 3;
 	for (size_t triangle = 0; triangle < triangle_count; triangle++) {
@@ -129,9 +133,10 @@ SMikkTSpaceInterface mikk_inter{
 void StandardMesh::gen_tangents() {
 	deindex();
 	if (!format.has_tangent || !format.has_bitangent) {
-		format.has_tangent = true;
-		format.has_bitangent = true;
-		resize(vertex_count, format);
+		Format f = format;
+		f.has_tangent = true;
+		f.has_bitangent = true;
+		resize(f);
 	}
 	SMikkTSpaceContext mikk_ctx{.m_pInterface = &mikk_inter, .m_pUserData = this};
 	genTangSpaceDefault(&mikk_ctx);

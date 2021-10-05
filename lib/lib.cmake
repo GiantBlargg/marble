@@ -65,9 +65,16 @@ FetchContent_Declare(mikktspace
 if(NOT mikktspace_POPULATED)
 	FetchContent_Populate(mikktspace)
 endif()
-add_library(mikktspace ${mikktspace_SOURCE_DIR}/mikktspace.c)
-target_include_directories(mikktspace INTERFACE ${mikktspace_SOURCE_DIR})
-target_link_libraries(libs INTERFACE mikktspace)
+FetchContent_Declare(welder
+	GIT_REPOSITORY https://github.com/mmikk/Welder.git
+	GIT_TAG 59810ac
+)
+if(NOT welder_POPULATED)
+	FetchContent_Populate(welder)
+endif()
+add_library(mikk ${mikktspace_SOURCE_DIR}/mikktspace.c ${welder_SOURCE_DIR}/weldmesh.c)
+target_include_directories(mikk INTERFACE ${mikktspace_SOURCE_DIR} ${welder_SOURCE_DIR})
+target_link_libraries(libs INTERFACE mikk)
 
 # find_package(OpenAL REQUIRED CONFIG)
 # target_link_libraries(libs INTERFACE OpenAL::OpenAL)

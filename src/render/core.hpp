@@ -244,7 +244,7 @@ class Core {
 	mat4 cameraPos;
 
 	const int lightmapSize = 4096;
-	const float lightmapCoverage = 300;
+	const float lightmapCoverage = 50;
 
 	GLuint dirLightBuffer, dirLightShadow;
 

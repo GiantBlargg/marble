@@ -2,8 +2,9 @@
 
 layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 norm;
-layout(location = 2) in vec4 tang;
-layout(location = 3) in vec2 uv;
+layout(location = 2) in vec3 tang;
+layout(location = 3) in vec3 bitang;
+layout(location = 4) in vec2 uv;
 
 layout(binding = 0) uniform sampler2DArrayShadow dirLightShadowMaps;
 
@@ -49,9 +50,9 @@ vec3 emissive = emissiveFactor * texture(emissiveTexture, uv).rgb;
 
 vec3 wo = normalize(camPos - pos);
 vec3 prim_normal = normalize(norm);
-vec3 tangent = normalize(tang.xyz);
-vec3 bitangent = normalize(tang.w * cross(prim_normal, tangent));
-vec3 normal = normalize(mat3(tangent, bitangent, prim_normal) * tangent_normal);
+vec3 tangent = normalize(tang);
+vec3 bitangent = normalize(bitang);
+vec3 normal;
 
 const float pi = 3.1415927;
 
@@ -103,6 +104,12 @@ vec3 enviroment() {
 }
 
 void main() {
+
+	if (!isnan(tangent.x) && !isnan(bitangent.x))
+		normal = normalize(mat3(tangent, bitangent, prim_normal) * tangent_normal);
+	else
+		normal = prim_normal;
+
 	vec3 colour = emissive;
 
 	colour += enviroment() * occlusion;

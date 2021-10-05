@@ -909,10 +909,15 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 			if (!prim.attributes.position.has_value())
 				continue;
 			size_t count = gltf.accessors[prim.attributes.position.value()].count;
+			bool has_position = prim.attributes.position.has_value();
 			bool has_normal = prim.attributes.normal.has_value();
 			bool has_tangent = prim.attributes.tangent.has_value();
-			Render::StandardMesh mesh(
-				count, has_normal, has_tangent, prim.attributes.texcoord.size(), prim.attributes.color.size());
+			size_t num_uv = prim.attributes.texcoord.size();
+			size_t num_colour = prim.attributes.color.size();
+			StandardMesh mesh(
+				count,
+				{has_position, has_normal, has_tangent, has_tangent, num_uv > 0, num_uv > 1, num_uv > 2, num_uv > 3,
+				 num_colour > 0, num_colour > 1});
 			accessor_for_each(
 				gltf, buffers_data, prim.attributes.position.value(), [&mesh](size_t vertex, const void* data) {
 					mesh.position(vertex) = *reinterpret_cast<const glm::vec3*>(data);
@@ -928,7 +933,11 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 			if (prim.attributes.tangent.has_value()) {
 				accessor_for_each(
 					gltf, buffers_data, prim.attributes.tangent.value(), [&mesh](size_t vertex, const void* data) {
-						mesh.tangent(vertex) = *reinterpret_cast<const glm::vec4*>(data);
+						const vec3& tangent = *reinterpret_cast<const glm::vec3*>(data);
+						const float& sign =
+							*reinterpret_cast<const float*>(reinterpret_cast<const glm::vec3*>(data) + 1);
+						mesh.tangent(vertex) = tangent;
+						mesh.bitangent(vertex) = (sign * cross(mesh.normal(vertex), tangent));
 					});
 			}
 
@@ -945,7 +954,7 @@ Model load_gltf(std::filesystem::path path, Render& render) {
 				accessor_for_each(
 					gltf, buffers_data, prim.attributes.texcoord[t],
 					[&mesh, convert_func, t](size_t index, const void* data) {
-						mesh.texcoord(t, index) = convert_func(data);
+						mesh.tex_coord(t, index) = convert_func(data);
 					});
 			}
 

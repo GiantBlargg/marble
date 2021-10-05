@@ -1,7 +1,9 @@
 #pragma once
 
-#include "core.hpp"
 #include <optional>
+
+#include "core.hpp"
+#include "standard_mesh.hpp"
 
 namespace Render {
 
@@ -30,6 +32,8 @@ class Render : public Core {
 	TextureHandle reflection;
 	TextureHandle reflectionBRDF;
 
+	GLuint zero_buffer;
+
 	void render_cubemap(Shader::Type type, RenderOrder order, GLuint cubemap, GLsizei width);
 
   public:
@@ -47,50 +51,6 @@ class Render : public Core {
 	void set_skybox_cube_texture(TextureHandle, bool update = true);
 
 	void update_skybox();
-
-	class StandardMesh {
-	  private:
-		friend class Render;
-		std::vector<float> vertex_data;
-		bool has_normal, has_tangent;
-		size_t vertex_count;
-		size_t tex_coord_count, colour_count;
-		size_t stride;
-
-	  public:
-		StandardMesh() : StandardMesh(0, false, false, 0, 0){};
-		StandardMesh(
-			size_t vertex_count, bool has_normal, bool has_tangent, size_t tex_coord_count, size_t colour_count) {
-			resize(vertex_count, has_normal, has_tangent, tex_coord_count, colour_count);
-		}
-		void resize(size_t vertex, bool has_normal, bool has_tangent, size_t tex_coord, size_t colour);
-		// Data is zeroed after resize
-
-		size_t get_vertex_count() { return vertex_count; }
-
-		vec3& position(int vertex) {
-			const size_t offset = stride * vertex;
-			return *reinterpret_cast<vec3*>(vertex_data.data() + offset);
-		}
-		vec3& normal(int vertex) {
-			const size_t offset = stride * vertex + 3;
-			return *reinterpret_cast<vec3*>(vertex_data.data() + offset);
-		}
-		vec4& tangent(int vertex) {
-			const size_t offset = stride * vertex + 3 + 3;
-			return *reinterpret_cast<vec4*>(vertex_data.data() + offset);
-		}
-		vec2& texcoord(int set, int vertex) {
-			const size_t offset = stride * vertex + 3 + 3 + 4 + 2 * set;
-			return *reinterpret_cast<vec2*>(vertex_data.data() + offset);
-		}
-		vec4& colour(int set, int vertex) {
-			const size_t offset = stride * vertex + 3 + 3 + 4 + 2 * tex_coord_count + 4 * set;
-			return *reinterpret_cast<vec4*>(vertex_data.data() + offset);
-		}
-
-		std::vector<uint32_t> indices;
-	};
 
 	MeshHandle standard_mesh_create(StandardMesh mesh);
 };

@@ -1,9 +1,9 @@
 #include "render.hpp"
 
+#include <string>
+
 #include "gl.hpp"
 #include "shaders.hpp"
-#include <mikktspace.h>
-#include <string>
 
 namespace Render {
 
@@ -180,6 +180,12 @@ Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
 		glDeleteBuffers(1, &index_buffer);
 		glDeleteVertexArrays(1, &quadVertexArray);
 	}
+
+	{
+		const float zero_block[4] = {0, 0, 0, 0};
+		glCreateBuffers(1, &zero_buffer);
+		glNamedBufferStorage(zero_buffer, sizeof(zero_block), zero_block, 0);
+	}
 }
 
 const glm::mat4 captureViews[] = {
@@ -302,108 +308,14 @@ void Render::set_skybox_cube_texture(TextureHandle texture, bool update) {
 	set_skybox_material(skyboxMaterial, update);
 }
 
-void Render::StandardMesh::resize(size_t vertex, bool normal, bool tangent, size_t tex_coord, size_t colour) {
-	vertex_count = vertex;
-	has_normal = normal;
-	has_tangent = tangent;
-	tex_coord_count = tex_coord;
-	colour_count = colour;
-	stride = 3 + 3 + 4 + 2 * tex_coord_count + 4 * colour_count;
-
-	vertex_data.clear();
-	vertex_data.resize(stride * vertex_count);
-}
-
-const std::unordered_map<GLenum, int> type_size = {
-	{GL_BYTE, 1}, {GL_UNSIGNED_BYTE, 1}, {GL_SHORT, 2}, {GL_UNSIGNED_SHORT, 2},
-	{GL_INT, 4},  {GL_UNSIGNED_INT, 4},  {GL_FLOAT, 4},
-};
-
-#define VERTEX_ATTRIB(attribindex, size, type, normalized)                                                             \
-	glEnableVertexArrayAttrib(vao, attribindex);                                                                       \
-	glVertexArrayAttribFormat(vao, attribindex, size, type, normalized, offset);                                       \
-	glVertexArrayAttribBinding(vao, attribindex, 0);                                                                   \
-	offset += size * type_size.at(type);
-
-int mikkGetNumFaces(const SMikkTSpaceContext* pContext) {
-	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
-	return mesh.get_vertex_count() / 3;
-}
-int mikkGetNumVerticesOfFace(const SMikkTSpaceContext*, const int) { return 3; }
-void mikkGetPosition(const SMikkTSpaceContext* pContext, float fvPosOut[], const int iFace, const int iVert) {
-	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
-	vec3& pos = mesh.position(iFace * 3 + iVert);
-	fvPosOut[0] = pos.x;
-	fvPosOut[1] = pos.y;
-	fvPosOut[2] = pos.z;
-}
-void mikkGetNormal(const SMikkTSpaceContext* pContext, float fvNormOut[], const int iFace, const int iVert) {
-	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
-	vec3& normal = mesh.normal(iFace * 3 + iVert);
-	fvNormOut[0] = normal.x;
-	fvNormOut[1] = normal.y;
-	fvNormOut[2] = normal.z;
-}
-void mikkGetTexCoord(const SMikkTSpaceContext* pContext, float fvTexcOut[], const int iFace, const int iVert) {
-	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
-	vec2& uv = mesh.texcoord(0, iFace * 3 + iVert);
-	fvTexcOut[0] = uv.x;
-	fvTexcOut[1] = uv.y;
-}
-void mikkSetTSpaceBasic(
-	const SMikkTSpaceContext* pContext, const float fvTangent[], const float fSign, const int iFace, const int iVert) {
-	auto& mesh = *reinterpret_cast<Render::StandardMesh*>(pContext->m_pUserData);
-	mesh.tangent(iFace * 3 + iVert) = vec4{fvTangent[0], fvTangent[1], fvTangent[2], fSign};
-}
-
-SMikkTSpaceInterface mikk_inter{
-	.m_getNumFaces = mikkGetNumFaces,
-	.m_getNumVerticesOfFace = mikkGetNumVerticesOfFace,
-	.m_getPosition = mikkGetPosition,
-	.m_getNormal = mikkGetNormal,
-	.m_getTexCoord = mikkGetTexCoord,
-	.m_setTSpaceBasic = mikkSetTSpaceBasic};
-
 MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
-	if ((!mesh.has_normal || !mesh.has_tangent) && !mesh.indices.empty()) {
-		const std::vector<float> old_vertex_data = std::move(mesh.vertex_data);
-		mesh.resize(mesh.indices.size(), mesh.has_normal, mesh.has_tangent, mesh.tex_coord_count, mesh.colour_count);
+	if (!mesh.format.has_normal)
+		mesh.gen_normals();
 
-		for (size_t i = 0; i < mesh.indices.size(); i++) {
-			uint32_t index = mesh.indices[i];
-			std::copy(
-				old_vertex_data.begin() + index * mesh.stride, old_vertex_data.begin() + (index + 1) * mesh.stride,
-				mesh.vertex_data.begin() + i * mesh.stride);
-		}
+	if (!mesh.format.has_tangent && mesh.format.has_tex_coord_0)
+		mesh.gen_tangents();
 
-		mesh.indices.clear();
-	}
-
-	if (!mesh.has_normal) {
-		size_t triangle_count = mesh.vertex_count / 3;
-		for (size_t triangle = 0; triangle < triangle_count; triangle++) {
-			vec3& v1 = mesh.position(triangle * 3);
-			vec3& v2 = mesh.position(triangle * 3 + 1);
-			vec3& v3 = mesh.position(triangle * 3 + 2);
-			vec3 normal = normalize(cross(v2 - v1, v3 - v1));
-			mesh.normal(triangle * 3) = normal;
-			mesh.normal(triangle * 3 + 1) = normal;
-			mesh.normal(triangle * 3 + 2) = normal;
-		}
-	}
-
-	if (!mesh.has_tangent && mesh.tex_coord_count > 0) {
-		SMikkTSpaceContext mikk_ctx{.m_pInterface = &mikk_inter, .m_pUserData = &mesh};
-		genTangSpaceDefault(&mikk_ctx);
-	}
-
-	if (mesh.indices.empty()) {
-		// TODO: Proper welding
-		mesh.indices.resize(mesh.vertex_count);
-		for (size_t i = 0; i < mesh.vertex_count; i++) {
-			mesh.indices[i] = i;
-		}
-	}
+	mesh.reindex();
 
 	GLuint vertex_buffer, index_buffer, vao;
 	glCreateBuffers(1, &vertex_buffer);
@@ -412,33 +324,26 @@ MeshHandle Render::standard_mesh_create(StandardMesh mesh) {
 
 	glNamedBufferStorage(vertex_buffer, mesh.vertex_data.size() * sizeof(float), mesh.vertex_data.data(), 0);
 	glNamedBufferStorage(index_buffer, mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), 0);
+
 	glVertexArrayElementBuffer(vao, index_buffer);
-
 	glVertexArrayVertexBuffer(vao, 0, vertex_buffer, 0, mesh.stride * sizeof(float));
+	glVertexArrayVertexBuffer(vao, 15, zero_buffer, 0, 0);
 
-	int offset = 0;
+	uint attrib_index = 0;
 
-	VERTEX_ATTRIB(0, 3, GL_FLOAT, false) // Position
-	VERTEX_ATTRIB(1, 3, GL_FLOAT, false) // Normal
-	VERTEX_ATTRIB(2, 4, GL_FLOAT, false) // Tangent
-	if (mesh.tex_coord_count > 0) {
-		VERTEX_ATTRIB(3, 2, GL_FLOAT, false)
-		if (mesh.tex_coord_count > 1) {
-			VERTEX_ATTRIB(4, 2, GL_FLOAT, false)
-			if (mesh.tex_coord_count > 2) {
-				VERTEX_ATTRIB(5, 2, GL_FLOAT, false)
-				if (mesh.tex_coord_count > 3) {
-					VERTEX_ATTRIB(6, 2, GL_FLOAT, false)
-				}
-			}
-		}
-	}
-	if (mesh.colour_count > 0) {
-		VERTEX_ATTRIB(7, 4, GL_FLOAT, false)
-		if (mesh.colour_count > 1) {
-			VERTEX_ATTRIB(8, 4, GL_FLOAT, false)
-		}
-	}
+#define STANDARD_MESH_VERTEX_FEILD(name, size)                                                                         \
+	if (mesh.format.has_##name) {                                                                                      \
+		glEnableVertexArrayAttrib(vao, attrib_index);                                                                  \
+		glVertexArrayAttribFormat(vao, attrib_index, size, GL_FLOAT, false, mesh.offset_##name * sizeof(float));       \
+		glVertexArrayAttribBinding(vao, attrib_index, 0);                                                              \
+	} else {                                                                                                           \
+		glEnableVertexArrayAttrib(vao, attrib_index);                                                                  \
+		glVertexArrayAttribFormat(vao, attrib_index, size, GL_FLOAT, false, 0);                                        \
+		glVertexArrayAttribBinding(vao, attrib_index, 15);                                                             \
+	}                                                                                                                  \
+	attrib_index++;
+	STANDARD_MESH_VERTEX_FORMAT
+#undef STANDARD_MESH_VERTEX_FEILD
 
 	return meshes_insert(
 		Mesh{.vao = vao, .count = static_cast<int>(mesh.indices.size()), .buffers = {vertex_buffer, index_buffer}});

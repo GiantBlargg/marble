@@ -17,6 +17,10 @@ struct MaterialPBR {
 	std::optional<TextureHandle> occlusionTexture;
 	vec3 emissiveFactor;
 	std::optional<TextureHandle> emissiveTexture;
+	enum class AlphaMode { Opaque, Masked, Blend };
+	AlphaMode alphaMode;
+	float alphaCutoff = 0.5f;
+	bool doubleSided = false;
 };
 
 class Render : public Core {

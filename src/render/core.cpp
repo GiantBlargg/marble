@@ -20,14 +20,14 @@ void Core::shaders_cleanup(size_t handle) {
 }
 
 void Core::materials_setup(size_t handle) {
-	for (auto& shader_conf : materials_get(handle).shaders) {
-		shaders_get(shader_conf.shader).materials.emplace(handle);
+	for (auto& shader_pass : materials_get(handle).shader_passes) {
+		shaders_get(shader_pass.shader).materials.emplace(handle);
 	}
 }
 void Core::materials_cleanup(size_t handle) {
 	// assert(materials_get(handle).surfaces.empty());
-	for (auto& shader_conf : materials_get(handle).shaders) {
-		shaders_get(shader_conf.shader).materials.erase(handle);
+	for (auto& shader_pass : materials_get(handle).shader_passes) {
+		shaders_get(shader_pass.shader).materials.erase(handle);
 	}
 }
 
@@ -105,39 +105,43 @@ void Core::renderScene(Shader::Type type, RenderOrder order) {
 			for (auto mat : shader.materials) {
 				auto& material = materials_get(mat);
 
-				for (auto shaderConfig : material.shaders) {
-					if (&shaders_get(shaderConfig.shader) != &shader)
+				for (auto shader_pass : material.shader_passes) {
+					if (&shaders_get(shader_pass.shader) != &shader)
 						continue;
-					glBindBufferBase(GL_UNIFORM_BUFFER, 1, shaderConfig.uniform);
-					glBindTextures(3, shaderConfig.textures.size(), shaderConfig.textures.data());
+					glBindBufferBase(GL_UNIFORM_BUFFER, 1, shader_pass.uniform);
+					glBindTextures(3, shader_pass.textures.size(), shader_pass.textures.data());
 					break;
 				}
 
 				for (auto& s : material.surfaces) {
 					auto& surface = surfaces_get(s);
-					glBindVertexArray(meshes_get(surface.mesh).vao);
+					auto& mesh = meshes_get(surface.mesh);
+					glBindVertexArray(mesh.vao);
 
 					glUniformMatrix4fv(0, 1, false, value_ptr(surface.transform));
 
-					glDrawElements(GL_TRIANGLES, meshes_get(surface.mesh).count, GL_UNSIGNED_INT, 0);
+					glDrawElements(GL_TRIANGLES, mesh.count, GL_UNSIGNED_INT, 0);
 				}
 			}
 		}
 	} else {
-		for (auto& surface : surfaces_dense) {
-			glBindVertexArray(meshes_get(surface.mesh).vao);
-			for (auto& shader : materials_get(surface.material).shaders) {
-				if ((shaders_get(shader.shader).type & type) == 0)
+		std::vector<Surface> surfaces = surfaces_dense;
+		for (auto& surface : surfaces) {
+			auto& mesh = meshes_get(surface.mesh);
+			glBindVertexArray(mesh.vao);
+			for (auto& shader_pass : materials_get(surface.material).shader_passes) {
+				auto& shader = shaders_get(shader_pass.shader);
+				if ((shader.type & type) == 0)
 					continue;
 
-				glUseProgram(shaders_get(shader.shader).shader);
+				glUseProgram(shader.shader);
 
-				glBindBufferBase(GL_UNIFORM_BUFFER, 1, shader.uniform);
-				glBindTextures(3, shader.textures.size(), shader.textures.data());
+				glBindBufferBase(GL_UNIFORM_BUFFER, 1, shader_pass.uniform);
+				glBindTextures(3, shader_pass.textures.size(), shader_pass.textures.data());
 
 				glUniformMatrix4fv(0, 1, false, value_ptr(surface.transform));
 
-				glDrawElements(GL_TRIANGLES, meshes_get(surface.mesh).count, GL_UNSIGNED_INT, 0);
+				glDrawElements(GL_TRIANGLES, mesh.count, GL_UNSIGNED_INT, 0);
 			}
 		}
 	}
@@ -150,7 +154,7 @@ void Core::run() {
 	glEnable(GL_CULL_FACE);
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 	glDisable(GL_BLEND);
-	glDepthFunc(GL_LEQUAL);
+	glDepthFunc(GL_LESS);
 
 	struct _DirLight {
 		vec3 dir;
@@ -201,9 +205,18 @@ void Core::run() {
 	glViewport(0, 0, width, height);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	glBindTextures(0, 1, &dirLightShadow);
 	glCullFace(GL_BACK);
+	renderScene(Shader::Type::Depth);
+
+	glDepthFunc(GL_EQUAL);
+	glBindTextures(0, 1, &dirLightShadow);
 	renderScene(Shader::Type::Opaque);
+
+	glDepthFunc(GL_LESS);
+	glEnable(GL_BLEND);
+	glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
+	renderScene(Shader::Type::Transparent, RenderOrder::Distance);
 }
 
 } // namespace Render

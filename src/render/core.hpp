@@ -157,7 +157,7 @@ class Core {
   protected:
 	struct Shader {
 		GLuint shader;
-		enum Type { Opaque = 1 << 0, Depth = 1 << 1, Shadow = 1 << 2, Skybox = 1 << 4 };
+		enum Type { Opaque = 1 << 0, Depth = 1 << 1, Shadow = 1 << 2, Transparent = 1 << 3, Skybox = 1 << 4 };
 		friend inline Type operator|(const Type lhs, const Type rhs) {
 			return static_cast<Type>(static_cast<int>(lhs) | static_cast<int>(rhs));
 		}
@@ -168,12 +168,12 @@ class Core {
 
   protected:
 	struct Material {
-		struct ShaderConfig {
+		struct ShaderPass {
 			ShaderHandle shader;
 			GLuint uniform;
 			std::vector<TextureHandle> textures;
 		};
-		std::vector<ShaderConfig> shaders;
+		std::vector<ShaderPass> shader_passes;
 		std::unordered_set<size_t> surfaces = {};
 	};
 	RESOURCE_CONTAINER(Material, materials, Core)
@@ -251,6 +251,7 @@ class Core {
 	enum class RenderOrder {
 		Simple,
 		Shader,
+		Distance,
 	};
 	void renderScene(Shader::Type type, RenderOrder order = RenderOrder::Shader);
 

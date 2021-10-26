@@ -35,13 +35,26 @@ struct PBR {
 	float metalFactor;
 	float roughFactor;
 	float reflectionLevels;
+	uint has_albedo_texture;
+	uint has_metal_rough_texture;
+	uint has_normal_texture;
+	uint has_occlusion_texture;
+	uint has_emissive_texture;
+	float alpha_depth_cutoff;
 };
 MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
 	static ShaderHandle shader = shaders_insert(Shader{
 		load_spirv_program({{Shaders::default_vert, GL_VERTEX_SHADER}, {Shaders::pbr_frag, GL_FRAGMENT_SHADER}}),
 		Shader::Type::Opaque});
+	static ShaderHandle trans_shader = shaders_insert(Shader{
+		load_spirv_program({{Shaders::default_vert, GL_VERTEX_SHADER}, {Shaders::pbr_frag, GL_FRAGMENT_SHADER}}),
+		Shader::Type::Transparent});
 	static ShaderHandle depthShader = shaders_insert(Shader{
 		load_spirv_program({{Shaders::default_vert, GL_VERTEX_SHADER}, {Shaders::depth_frag, GL_FRAGMENT_SHADER}}),
+		Shader::Type::Depth | Shader::Type::Shadow});
+	static ShaderHandle cutoffDepthShader = shaders_insert(Shader{
+		load_spirv_program(
+			{{Shaders::default_vert, GL_VERTEX_SHADER}, {Shaders::cutoff_depth_frag, GL_FRAGMENT_SHADER}}),
 		Shader::Type::Depth | Shader::Type::Shadow});
 
 	GLuint uniform;
@@ -52,27 +65,41 @@ MaterialHandle Render::create_pbr_material(MaterialPBR pbr) {
 		.metalFactor = pbr.metalFactor,
 		.roughFactor = pbr.roughFactor,
 		.reflectionLevels = static_cast<float>(reflectionLevels),
+		.has_albedo_texture = pbr.albedoTexture.has_value(),
+		.has_metal_rough_texture = pbr.metalRoughTexture.has_value(),
+		.has_normal_texture = pbr.normalTexture.has_value(),
+		.has_occlusion_texture = pbr.occlusionTexture.has_value(),
+		.has_emissive_texture = pbr.emissiveTexture.has_value(),
+		.alpha_depth_cutoff = pbr.alphaCutoff,
 	};
 	glNamedBufferStorage(uniform, sizeof(PBR), &_pbr, 0);
-
-	static uint8_t white[3] = {255, 255, 255};
-	static auto whiteTexture = create_texture(1, 1, 3, Core::TextureFlags::NONE, &white);
-	static uint8_t default_normal[3] = {127, 127, 255};
-	static auto default_normal_texture = create_texture(1, 1, 3, Core::TextureFlags::NONE, &default_normal);
 
 	std::vector<TextureHandle> textures = {
 		irradiance,
 		reflection,
 		reflectionBRDF,
-		pbr.albedoTexture.value_or(whiteTexture),
-		pbr.metalRoughTexture.value_or(whiteTexture),
-		pbr.normalTexture.value_or(default_normal_texture),
-		pbr.occlusionTexture.value_or(whiteTexture),
-		pbr.emissiveTexture.value_or(whiteTexture)};
+		pbr.albedoTexture.value_or(0),
+		pbr.metalRoughTexture.value_or(0),
+		pbr.normalTexture.value_or(0),
+		pbr.occlusionTexture.value_or(0),
+		pbr.emissiveTexture.value_or(0)};
 
-	return materials_insert(Material{
-		{{.shader = shader, .uniform = uniform, .textures = textures},
-		 {.shader = depthShader, .uniform = 0, .textures = {}}}});
+	switch (pbr.alphaMode) {
+	case MaterialPBR::AlphaMode::Opaque:
+		return materials_insert(Material{{
+			{.shader = shader, .uniform = uniform, .textures = textures},
+			{.shader = depthShader, .uniform = 0, .textures = {}},
+		}});
+	case MaterialPBR::AlphaMode::Masked:
+		return materials_insert(Material{{
+			{.shader = shader, .uniform = uniform, .textures = textures},
+			{.shader = cutoffDepthShader, .uniform = uniform, .textures = {pbr.albedoTexture.value_or(0)}},
+		}});
+	case MaterialPBR::AlphaMode::Blend:
+		return materials_insert(Material{{
+			{.shader = trans_shader, .uniform = uniform, .textures = textures},
+		}});
+	}
 }
 
 Render::Render(void (*glGetProcAddr(const char*))()) : Core(glGetProcAddr) {
@@ -290,7 +317,7 @@ void Render::set_skybox_rect_texture(TextureHandle texture, bool update) {
 	static MaterialHandle skyboxMaterial = materials_insert(Material{
 		{{.shader = skyboxShader, .uniform = 0, .textures = {texture}},
 		 {.shader = skyboxDepthShader, .uniform = 0, .textures = {}}}});
-	materials_get(skyboxMaterial).shaders[0].textures[0] = texture;
+	materials_get(skyboxMaterial).shader_passes[0].textures[0] = texture;
 	set_skybox_material(skyboxMaterial, update);
 }
 
@@ -304,7 +331,7 @@ void Render::set_skybox_cube_texture(TextureHandle texture, bool update) {
 	static MaterialHandle skyboxMaterial = materials_insert(Material{
 		{{.shader = skyboxShader, .uniform = 0, .textures = {texture}},
 		 {.shader = skyboxDepthShader, .uniform = 0, .textures = {}}}});
-	materials_get(skyboxMaterial).shaders[0].textures[0] = texture;
+	materials_get(skyboxMaterial).shader_passes[0].textures[0] = texture;
 	set_skybox_material(skyboxMaterial, update);
 }
 

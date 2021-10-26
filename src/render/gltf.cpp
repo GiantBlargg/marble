@@ -796,6 +796,12 @@ MaterialPBR convert_material(const Gltf& gltf, const std::vector<ImageData>& ima
 		assert(material.emissiveTexture.value().texCoord == 0);
 	}
 
+	const static std::unordered_map<Gltf::Material::AlphaMode, MaterialPBR::AlphaMode> alphaModeTransform = {
+		{Gltf::Material::AlphaMode::OPAQUE, MaterialPBR::AlphaMode::Opaque},
+		{Gltf::Material::AlphaMode::MASK, MaterialPBR::AlphaMode::Masked},
+		{Gltf::Material::AlphaMode::BLEND, MaterialPBR::AlphaMode::Blend},
+	};
+
 	return MaterialPBR{
 		.albedoFactor = material.pbrMetallicRoughness.baseColorFactor,
 		.albedoTexture = albedoTexture,
@@ -805,7 +811,11 @@ MaterialPBR convert_material(const Gltf& gltf, const std::vector<ImageData>& ima
 		.normalTexture = normalTexture,
 		.occlusionTexture = occlusionTexture,
 		.emissiveFactor = material.emissiveFactor,
-		.emissiveTexture = emissiveTexture};
+		.emissiveTexture = emissiveTexture,
+		.alphaMode = alphaModeTransform.at(material.alphaMode),
+		.alphaCutoff = static_cast<float>(material.alphaCutoff),
+		.doubleSided = material.doubleSided,
+	};
 }
 
 struct GLB {
